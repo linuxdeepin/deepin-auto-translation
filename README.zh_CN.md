@@ -13,5 +13,7 @@ TODO
 ## 资源和链接
 
 - [Qt Linguist TS 文件格式 XSD](https://doc.qt.io/qt-6/linguist-ts-file-format.html)
-- [VolcEngine ChatCompletions API](https://www.volcengine.com/docs/82379/1298454)
+- [OpenAI Completions API](https://platform.openai.com/docs/api-reference/chat)
+  - [VolcEngine: ChatCompletions API](https://www.volcengine.com/docs/82379/1298454)
+  - [vLLM: Structured Outputs](https://docs.vllm.ai/en/latest/usage/structured_outputs.html)
 - [Transifex OpenAPI](https://transifex.github.io/openapi/)

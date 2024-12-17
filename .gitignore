@@ -2,7 +2,14 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
+# NodeJS related stuff
 .npmrc
 node_modules/
 
+# Project-related files
+## Secrets
 secrets.ts
+## Repos
+repo/
+## Qt Linguist translation files (something_ar.ts, something_zh_CN.ts)
+*_*.ts
