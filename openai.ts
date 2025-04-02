@@ -4,6 +4,8 @@
 
 import * as YAML from 'js-yaml';
 import axios from 'axios';
+import * as Settings from './settings'
+import * as Secrets from './secrets';
 import { MessageData } from './types';
 import * as Prompt from './prompt';
 
@@ -21,8 +23,8 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
     });
 
     // axios request
-    return axios.post('http://127.0.0.1:11434/api/chat', {
-        model: 'qwen2.5:7b',
+    return axios.post(Settings.openai.chatCompletionsEndpoint, {
+        model: Settings.openai.model,
         messages: [
             {
                 role: "system",
@@ -33,12 +35,15 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                 "content": userPrompt
             }
         ],
-        stream: false,
-        format: Prompt.structedOutputJsonSchema,
+        response_format: Prompt.structedOutputSchema,
+    }, {
+        headers: {
+            Authorization: `Bearer ${Secrets.openai.accessKey}`
+        }
     }).then(response => {
         // response as json array
-        console.log(response.data.message.content);
-        const responsedTranslations = JSON.parse(response.data.message.content);
+        console.log(response.data.choices[0].message.content);
+        const responsedTranslations = JSON.parse(response.data.choices[0].message.content);
         if (Array.isArray(responsedTranslations) && responsedTranslations.length === messages.length) {
             console.log(`Translated ${messages.length} strings`);
             for (let i = 0; i < messages.length; i++) {
@@ -54,7 +59,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             }
         } else {
             console.log(Array.isArray(responsedTranslations), responsedTranslations.length, messages.length);
-            console.error(`Unexpected response from Ollama: ${responsedTranslations}`);
+            console.error(`Unexpected response from OpenAI endpoint: ${responsedTranslations}`);
         }
         // also log token usage
         console.log(response.data.usage)

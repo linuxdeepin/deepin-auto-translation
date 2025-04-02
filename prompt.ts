@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { zodResponseFormat } from 'openai/helpers/zod';
+
 export const systemPrompt = `你是一个各国语言的翻译工具，擅长进行计算机操作系统与软件的用户界面文案翻译。用户将以YAML格式提供一系列待翻译文本，结构为：
 
 \`\`\`yaml
@@ -26,23 +29,13 @@ messages:
 \`\`\`
 `;
 
-export const structedOutputJsonSchema = {
-    type: "array",
-    items: {
-        type: "object",
-        properties: {
-            source: {
-                type: "string"
-            },
-            translation: {
-                type: "string"
-            }
-        },
-        required: [
-            "source",
-            "translation"
-        ]
-    }
-}
+const I18nResponseStructure = z.array(z.object({
+    source: z.string(),
+    translation: z.string()
+}))
+
+export const structedOutputSchema = zodResponseFormat(I18nResponseStructure, "i18n_json_response")
+
+export const structedOutputJsonSchema = structedOutputSchema.json_schema.schema
 
 export default { systemPrompt, structedOutputJsonSchema };

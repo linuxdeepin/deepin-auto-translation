@@ -7,8 +7,12 @@ export const doubao = {
     accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxx'
 };
 
+export const openai = {
+    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxx'
+};
+
 export const transifex = {
     accessKey: 'x/xxxxxxxxxxxxxxxxxxxxxxxxxx'
 }
 
-export default {doubao, transifex};
+export default {doubao, openai, transifex};

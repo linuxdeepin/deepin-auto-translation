@@ -16,4 +16,6 @@ TODO
 - [OpenAI Completions API](https://platform.openai.com/docs/api-reference/chat)
   - [VolcEngine: ChatCompletions API](https://www.volcengine.com/docs/82379/1298454)
   - [vLLM: Structured Outputs](https://docs.vllm.ai/en/latest/usage/structured_outputs.html)
+  - [OpenAI Chat Completions: Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs?api-mode=chat&example=chain-of-thought)
+- [Ollama API#Structured outputs](https://github.com/ollama/ollama/blob/main/docs/api.md#request-structured-outputs)
 - [Transifex OpenAPI](https://transifex.github.io/openapi/)
