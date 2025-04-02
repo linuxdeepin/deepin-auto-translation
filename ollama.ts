@@ -4,7 +4,6 @@
 
 import * as YAML from 'js-yaml';
 import axios from 'axios';
-import * as Secrets from './secrets';
 import { MessageData } from './types';
 import * as Prompt from './prompt';
 
@@ -22,8 +21,8 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
     });
 
     // axios request
-    return axios.post('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
-        model: Secrets.doubao.model,
+    return axios.post('http://127.0.0.1:11434/api/chat', {
+        model: 'qwen2.5:7b',
         messages: [
             {
                 role: "system",
@@ -34,18 +33,12 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                 "content": userPrompt
             }
         ],
-        // undocumented but seems supported
-        extra_body: {
-            guided_json: Prompt.structedOutputJsonSchema
-        },
-    }, {
-        headers: {
-            Authorization: `Bearer ${Secrets.doubao.accessKey}`
-        }
+        stream: false,
+        format: Prompt.structedOutputJsonSchema,
     }).then(response => {
         // response as json array
-        console.log(response.data.choices[0].message.content);
-        const responsedTranslations = JSON.parse(response.data.choices[0].message.content);
+        console.log(response.data.message.content);
+        const responsedTranslations = JSON.parse(response.data.message.content);
         if (Array.isArray(responsedTranslations) && responsedTranslations.length === messages.length) {
             console.log(`Translated ${messages.length} strings`);
             for (let i = 0; i < messages.length; i++) {

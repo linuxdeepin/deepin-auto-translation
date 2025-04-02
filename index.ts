@@ -8,7 +8,7 @@ import axios from 'axios';
 import * as YAML from 'js-yaml';
 import * as Secrets from './secrets';
 import * as QtLinguist from './qtlinguist';
-import * as Doubao from './doubao';
+import * as Ollama from './ollama';
 import * as Transifex from './transifex';
 import * as GitRepo from './gitrepo';
 import { MessageData, TransifexResource } from './types';
@@ -32,7 +32,7 @@ async function translateLinguistTsFile(inputFilePath: string, keepUnfinishedType
     const batchSize = 25;
     for (let i = 0; i < translationQueue.length; i += batchSize) {
         const batch = translationQueue.slice(i, i + batchSize);
-        await Doubao.fetchTranslations(batch, targetLanguage, keepUnfinishedTypeAttr);
+        await Ollama.fetchTranslations(batch, targetLanguage, keepUnfinishedTypeAttr);
     }
 
     fs.writeFileSync(inputFilePath, new xmldom.XMLSerializer().serializeToString(doc));
@@ -43,7 +43,7 @@ async function translateLinguistTsFile(inputFilePath: string, keepUnfinishedType
 // You need to do the main auto-translate logic here.
 
 // The following one is just for demo purpose:
-Doubao.fetchTranslations([
+Ollama.fetchTranslations([
     {
         translationElement: null,
         context: "AppItemMenu",
@@ -75,3 +75,51 @@ Doubao.fetchTranslations([
         comment: null
     }
 ], 'ar', true);
+
+// translateLinguistTsFile('./repo/linuxdeepin/dde-shell/panels/notification/osd/default/translations/org.deepin.ds.osd.default_ar.ts', false);
+
+
+// use Transifex API to get a list of resources under o:linuxdeepin:p:deepin-desktop-environment
+// const resources = await Transifex.getAllLinkedResources('o:linuxdeepin:p:deepin-desktop-environment');
+// console.log(`Found ${resources.length} resources`, resources);
+
+
+// Transifex.uploadTranslatedFileToTransifex('ar', './dde-launchpad_ar.ts.ts', 'o:linuxdeepin:p:deepin-desktop-environment:r:bb726c8fc86b842e75820abb670f0f48');
+
+/*
+const transifexProjects = await Transifex.getAllProjects('o:linuxdeepin');
+fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
+
+// read transifex-projects.yml and get all resources form these projects
+// const transifexProjects = YAML.load(fs.readFileSync('./transifex-projects.yml', 'utf8')) as string[];
+const allResources = await Transifex.getAllLinkedResourcesFromProjects(transifexProjects);
+// save allResources to yaml file
+fs.writeFileSync('./transifex-resources.yml', YAML.dump(allResources));
+*/
+
+/*
+const transifexResources = YAML.load(fs.readFileSync('./transifex-resources.yml', 'utf8')) as TransifexResource[];
+GitRepo.ensureLocalReposExist(transifexResources);
+for (const resource of transifexResources) {
+    if (resource.additionalMarker === undefined) {
+        const resPath = GitRepo.getResourcePath(resource, 'ar');
+        if (resPath === '') {
+            console.log(`Skipping ${resource}...`);
+            resource.additionalMarker = 'skipped';
+            fs.writeFileSync('./transifex-resources.yml', YAML.dump(transifexResources));
+            continue;
+        }
+        console.log(resPath, "aaa");
+        const strCount = await translateLinguistTsFile(resPath, false);
+        if (strCount > 0) {
+            console.log(`Uploading ${resPath} to Transifex (${resource.transifexResourceId})...`);
+            Transifex.uploadTranslatedFileToTransifex('ar', resPath, resource.transifexResourceId);
+            resource.additionalMarker = 'translated';
+        } else {
+            console.log(`Skipping ${resPath}...`);
+            resource.additionalMarker = 'skipped';
+        }
+        fs.writeFileSync('./transifex-resources.yml', YAML.dump(transifexResources));
+    }
+}
+*/
