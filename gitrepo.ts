@@ -11,9 +11,13 @@ import * as Settings from './settings';
 export function ensureLocalReposExist(resources: TransifexResource[])
 {
     for (const resource of resources) {
-        const { repository, branch } = resource;
+        const { repository, branch, additionalMarker } = resource;
         // console.log(`repo ${repository}/${branch}`);
         const repoPath = `repo/${repository}`;
+        if (additionalMarker === 'ignore') {
+            console.log(`repo ${repoPath} marked as 'ignore', skipped...`);
+            continue;
+        }
         if (!fs.existsSync(repoPath)) {
             console.log(`repo ${repoPath} does not exist, cloning...`);
             let repoUrl = `https://github.com/${repository}.git`;

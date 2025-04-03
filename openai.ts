@@ -25,6 +25,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
     // axios request
     return axios.post(Settings.openai.chatCompletionsEndpoint, {
         model: Settings.openai.model,
+        temperature: 0.5,
         messages: [
             {
                 role: "system",
