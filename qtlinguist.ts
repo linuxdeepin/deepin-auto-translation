@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { MessageData } from './types';
+import { Document } from '@xmldom/xmldom'
 
 function createTsFileFromTemplate(targetLanguageCode: string, templateFilePath: string)
 {

@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { Element } from '@xmldom/xmldom'
+
 export type TransifexYaml = {
     filters: {
         filter_type: string,

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import fs from 'fs';
-import xmldom from 'xmldom';
+import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
 import axios from 'axios';
 import * as YAML from 'js-yaml';
 import * as Secrets from './secrets';
@@ -17,7 +17,7 @@ import { resourceUsage } from 'process';
 async function translateLinguistTsFile(inputFilePath: string, keepUnfinishedTypeAttr : boolean = true) : Promise<number>
 {
     const inputFileContents = fs.readFileSync(inputFilePath, 'utf8');
-    const doc = new xmldom.DOMParser().parseFromString(inputFileContents, 'application/xml');
+    const doc = new DOMParser().parseFromString(inputFileContents, 'application/xml');
     // <TS language="ar" version="2.1">
     const tsElement = doc.getElementsByTagName('TS')[0];
     let targetLanguage = tsElement.getAttribute('language')!;
@@ -34,10 +34,8 @@ async function translateLinguistTsFile(inputFilePath: string, keepUnfinishedType
     for (let i = 0; i < translationQueue.length; i += batchSize) {
         const batch = translationQueue.slice(i, i + batchSize);
         await Ollama.fetchTranslations(batch, targetLanguage, keepUnfinishedTypeAttr);
-        fs.writeFileSync(inputFilePath, new xmldom.XMLSerializer().serializeToString(doc));
+        fs.writeFileSync(inputFilePath, new XMLSerializer().serializeToString(doc));
     }
-
-    fs.writeFileSync(inputFilePath, new xmldom.XMLSerializer().serializeToString(doc));
 
     return translationQueue.length;
 }
