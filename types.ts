@@ -15,6 +15,13 @@ export type TransifexYaml = {
     }
 }
 
+export type TransifexIniResource = {
+    file_filter: string,
+    source_file: string,
+    source_lang: string,
+    type: string
+}
+
 export type TransifexResource = {
     repository: string, // "linuxdeepin/dde-launchpad"
     branch: string, // "master"

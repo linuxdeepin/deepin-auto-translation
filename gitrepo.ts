@@ -4,8 +4,9 @@
 
 import fs from 'fs';
 import * as YAML from 'js-yaml';
+import { parse } from 'ini';
 import { execSync } from 'child_process';
-import { TransifexResource, TransifexYaml } from './types';
+import { TransifexIniResource, TransifexResource, TransifexYaml } from './types';
 import * as Settings from './settings';
 
 export function ensureLocalReposExist(resources: TransifexResource[])
@@ -25,8 +26,9 @@ export function ensureLocalReposExist(resources: TransifexResource[])
                 // replace to `https://gitee.com/deepin-community` mirror for faster clone
                 repoUrl = repoUrl.replace("github.com/linuxdeepin", "gitee.com/deepin-community");
             }
-            const output = execSync(`git clone ${repoUrl} ${repoPath} --branch ${branch} --depth=1`);
-            console.log(output.toString());
+            execSync(`git clone ${repoUrl} ${repoPath} --branch ${branch} --depth=1`, {
+                stdio: 'inherit'
+            });
         } else {
             // TODO: updating?
             console.log(`repo ${repoPath} exists, skipped...`);
@@ -61,3 +63,45 @@ export function getResourcePath(res: TransifexResource, languageCode: string)
     }
     return result;
 }
+
+export function getResourcePathsFromTxConfig(repoPath: string, languageCode: string) : string[]
+{
+    const transifexCfg = parse(fs.readFileSync(`${repoPath}/.tx/config`, 'utf8'));
+    let sections : TransifexIniResource[] = [];
+    for (const key in transifexCfg) {
+        if (key === "main") continue;
+        sections.push(transifexCfg[key] as TransifexIniResource);
+    }
+    let resourcePaths : string[] = [];
+    for (const res of sections) {
+        if (res.type !== 'QT') continue;
+        const targetLanguagePath = res.file_filter
+        const targetResourcePath = targetLanguagePath.replace(/<lang>/g, languageCode)
+        const targetResourceFullPath = `${repoPath}/${targetResourcePath}`
+        if (!fs.existsSync(targetResourceFullPath)) {
+            console.log(`${targetResourceFullPath} does not exist, skipping...`);
+            continue
+        }
+        resourcePaths.push(targetResourcePath)
+    }
+    return resourcePaths
+}
+
+export function getResourcePathsFromTxYaml(repoPath: string, languageCode: string) : string[]
+{
+    const transifexYaml = YAML.load(fs.readFileSync(`${repoPath}/.tx/transifex.yaml`, 'utf8')) as TransifexYaml;
+    let resourcePaths : string[] = [];
+    for (const filter of transifexYaml.filters) {
+        if (filter.file_format !== 'QT') continue;
+        const targetLanguagePath = filter.translation_files_expression
+        const targetResourcePath = targetLanguagePath.replace(/<lang>/g, languageCode)
+        const targetResourceFullPath = `${repoPath}/${targetResourcePath}`
+        if (!fs.existsSync(targetResourceFullPath)) {
+            console.log(`${targetResourceFullPath} does not exist, skipping...`);
+            continue
+        }
+        resourcePaths.push(targetResourcePath)
+    }
+    return resourcePaths
+}
+

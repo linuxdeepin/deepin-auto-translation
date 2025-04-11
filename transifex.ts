@@ -6,6 +6,7 @@ import fs from 'fs';
 import axios from 'axios';
 import * as Secrets from './secrets';
 import { TransifexResource } from './types';
+import { execSync } from 'child_process';
 
 async function getTransifexAllPages(url: string) {
     try {
@@ -102,4 +103,20 @@ export async function uploadTranslatedFileToTransifex(language: string, filepath
     }).catch(error => {
         console.error(error.response.status, error.response.data);
     })
+}
+
+export async function downloadTranslationFilesViaCli(repoPath: string)
+{
+    const output = execSync(`tx pull --all`, {
+        cwd: repoPath,
+        stdio: 'inherit'
+    });
+}
+
+export async function uploadTranslatedFilesViaCli(language: string, repoPath: string)
+{
+    const output = execSync(`tx push -t -l ${language}`, {
+        cwd: repoPath,
+        stdio: 'inherit'
+    });
 }

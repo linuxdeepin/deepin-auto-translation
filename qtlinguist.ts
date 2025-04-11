@@ -46,7 +46,7 @@ export function extractStringsFromDocument(doc: Document) : MessageData[]
                 'comment': comment
             }
             translationQueue.push(messageData);
-            console.log(`  ${messageData.context}: ${messageData.source} ${comment ? `(${comment})` : ''}`)
+            // console.log(`  ${messageData.context}: ${messageData.source} ${comment ? `(${comment})` : ''}`)
             // </translation>
         }
         // </message>
