@@ -4,8 +4,10 @@
 
 import fs from 'fs';
 import axios from 'axios';
+import * as YAML from 'js-yaml';
+import { parse } from 'ini';
 import * as Secrets from './secrets';
-import { TransifexResource } from './types';
+import { TransifexIniResource, TransifexRepo, TransifexResource, TransifexYaml } from './types';
 import { execSync } from 'child_process';
 
 async function getTransifexAllPages(url: string) {
@@ -105,18 +107,85 @@ export async function uploadTranslatedFileToTransifex(language: string, filepath
     })
 }
 
-export async function downloadTranslationFilesViaCli(repoPath: string)
+export function isEmptyTxRepo(repo: TransifexRepo): boolean {
+    let isEmptyRepo = false;
+    fs.readdir(repo.path, (err, files) => {
+        isEmptyRepo = files.length === 1; 
+    });
+    return isEmptyRepo;
+}
+
+export function downloadTranslationFilesViaCli(repoPath: string, txBranch: string = "-1")
 {
-    const output = execSync(`tx pull --all`, {
+    const output = execSync(`tx pull --all --branch ${txBranch}`, {
         cwd: repoPath,
         stdio: 'inherit'
     });
 }
 
-export async function uploadTranslatedFilesViaCli(language: string, repoPath: string)
+export function uploadTranslatedFilesViaCli(language: string, repoPath: string, txBranch: string = "-1")
 {
-    const output = execSync(`tx push -t -l ${language}`, {
-        cwd: repoPath,
-        stdio: 'inherit'
-    });
+    if (fs.existsSync(`${repoPath}/.tx/config`)) {
+        const output = execSync(`tx push -t --languages ${language} --branch ${txBranch}`, {
+            cwd: repoPath,
+            stdio: 'inherit'
+        });
+    } else {
+        console.error(`${repoPath}/.tx/config does not exist, skipping...`);
+    }
+}
+
+export function getResourcePathsFromTxRepo(txRepo: TransifexRepo, languageCode: string) : string[]
+{
+    const txConfigPath = `${txRepo.path}/.tx/config`;
+    const txYamlPath = `${txRepo.path}/.tx/transifex.yaml`;
+    if (fs.existsSync(txYamlPath)) {
+        return getResourcePathsFromTxYaml(txRepo.path, languageCode);
+    } else if (fs.existsSync(txConfigPath)) {
+        return getResourcePathsFromTxConfig(txRepo.path, languageCode);
+    } else {
+        console.error(`${txConfigPath} or ${txYamlPath} does not exist, skipping...`);
+        return [];
+    }
+}
+
+export function getResourcePathsFromTxConfig(repoPath: string, languageCode: string) : string[]
+{
+    const transifexCfg = parse(fs.readFileSync(`${repoPath}/.tx/config`, 'utf8'));
+    let sections : TransifexIniResource[] = [];
+    for (const key in transifexCfg) {
+        if (key === "main") continue;
+        sections.push(transifexCfg[key] as TransifexIniResource);
+    }
+    let resourcePaths : string[] = [];
+    for (const res of sections) {
+        if (res.type !== 'QT') continue;
+        const targetLanguagePath = res.file_filter
+        const targetResourcePath = targetLanguagePath.replace(/<lang>/g, languageCode)
+        const targetResourceFullPath = `${repoPath}/${targetResourcePath}`
+        if (!fs.existsSync(targetResourceFullPath)) {
+            console.log(`${targetResourceFullPath} does not exist, skipping...`);
+            continue
+        }
+        resourcePaths.push(targetResourcePath)
+    }
+    return resourcePaths
+}
+
+export function getResourcePathsFromTxYaml(repoPath: string, languageCode: string) : string[]
+{
+    const transifexYaml = YAML.load(fs.readFileSync(`${repoPath}/.tx/transifex.yaml`, 'utf8')) as TransifexYaml;
+    let resourcePaths : string[] = [];
+    for (const filter of transifexYaml.filters) {
+        if (filter.file_format !== 'QT') continue;
+        const targetLanguagePath = filter.translation_files_expression
+        const targetResourcePath = targetLanguagePath.replace(/<lang>/g, languageCode)
+        const targetResourceFullPath = `${repoPath}/${targetResourcePath}`
+        if (!fs.existsSync(targetResourceFullPath)) {
+            console.log(`${targetResourceFullPath} does not exist, skipping...`);
+            continue
+        }
+        resourcePaths.push(targetResourcePath)
+    }
+    return resourcePaths
 }

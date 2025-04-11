@@ -22,6 +22,12 @@ export type TransifexIniResource = {
     type: string
 }
 
+export type TransifexRepo = {
+    path: string,
+    txBranch: string,
+    targetLanguageCodes: string[]
+}
+
 export type TransifexResource = {
     repository: string, // "linuxdeepin/dde-launchpad"
     branch: string, // "master"

@@ -28,11 +28,13 @@ async function translateLinguistTsFile(inputFilePath: string, keepUnfinishedType
     console.log(`Translating ${inputFilePath} to ${targetLanguage}`);
 
     let translationQueue = QtLinguist.extractStringsFromDocument(doc);
+    console.log(`Extracted ${translationQueue.length} untranslated strings from file: ${inputFilePath}`)
     // split translationQueue into batches, each batch contains 25 messages
     const batchSize = 25;
     for (let i = 0; i < translationQueue.length; i += batchSize) {
         const batch = translationQueue.slice(i, i + batchSize);
         await Ollama.fetchTranslations(batch, targetLanguage, keepUnfinishedTypeAttr);
+        fs.writeFileSync(inputFilePath, new xmldom.XMLSerializer().serializeToString(doc));
     }
 
     fs.writeFileSync(inputFilePath, new xmldom.XMLSerializer().serializeToString(doc));
