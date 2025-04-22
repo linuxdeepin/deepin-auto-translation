@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import fs from 'fs';
+import fs from 'node:fs';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
 import axios from 'axios';
 import * as YAML from 'js-yaml';
@@ -12,7 +12,7 @@ import * as Ollama from './ollama';
 import * as Transifex from './transifex';
 import * as GitRepo from './gitrepo';
 import { MessageData, TransifexResource } from './types';
-import { resourceUsage } from 'process';
+import { exit } from 'node:process';
 
 async function translateLinguistTsFile(inputFilePath: string, keepUnfinishedTypeAttr : boolean = true) : Promise<number>
 {

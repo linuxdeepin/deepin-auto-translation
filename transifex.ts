@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import fs from 'fs';
+import fs from 'node:fs';
 import axios from 'axios';
 import * as YAML from 'js-yaml';
 import { parse } from 'ini';
 import * as Secrets from './secrets';
 import { TransifexIniResource, TransifexRepo, TransifexResource, TransifexYaml } from './types';
-import { execSync } from 'child_process';
+import { execSync } from 'node:child_process';
 
 async function getTransifexAllPages(url: string) {
     try {
@@ -96,15 +96,27 @@ export async function uploadTranslatedFileToTransifex(language: string, filepath
     formData.append('file_type', 'default')
     formData.append('language', `l:${language}`);
     formData.append('resource', resourceId);
-    axios.postForm('https://rest.api.transifex.com/resource_translations_async_uploads', formData, {
+    console.log(`Uploading ${filepath} to Transifex (${resourceId})...`, formData);
+
+    fetch('https://rest.api.transifex.com/resource_translations_async_uploads', {
+        method: 'POST',
         headers: {
             Authorization: `Bearer ${Secrets.transifex.accessKey}`
-        }
-    }).then(response => {
-        console.log(response.data, response.statusText);
-    }).catch(error => {
-        console.error(error.response.status, error.response.data);
+        },
+        body: formData
     })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log(data);
+    })
+    .catch(error => {
+        console.error('Error uploading file:', error);
+    });
 }
 
 export function isEmptyTxRepo(repo: TransifexRepo): boolean {

@@ -35,8 +35,12 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         ],
         stream: false,
         format: Prompt.structedOutputJsonSchema,
+        options: {
+            temperature: 0.5
+        }
     }).then(response => {
         // response as json array
+        console.groupCollapsed("Translation status");
         console.log(response.data.message.content);
         const responsedTranslations = JSON.parse(response.data.message.content);
         if (Array.isArray(responsedTranslations) && responsedTranslations.length === messages.length) {
@@ -57,7 +61,8 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             console.error(`Unexpected response from Ollama: ${responsedTranslations}`);
         }
         // also log token usage
-        console.log(response.data.usage)
+        console.log(response.data.usage);
+        console.groupEnd();
     }).catch(error => {
         console.error(error);
     });

@@ -27,6 +27,27 @@ messages:
     { "source": "Full-screen Mode", "translation": "وضع الشاشة الكاملة" }
 ]
 \`\`\`
+
+另一个示例：
+
+\`\`\`yaml
+targetLanguageCode: fr
+messages:
+- context: "AppItemMenu"
+  source: "Move to Top"
+  comment: "Move the selected item to the top of the list"
+- context: "BottomBar"
+  source: "Full-screen Mode"
+\`\`\`
+
+则对于上述示例，返回的 Json 应为：
+
+\`\`\`json
+[
+    { "source": "Move to Top", "translation": "Déplacer vers le haut" },
+    { "source": "Full-screen Mode", "translation": "Mode plein écran" }
+]
+\`\`\`
 `;
 
 const I18nResponseStructure = z.array(z.object({

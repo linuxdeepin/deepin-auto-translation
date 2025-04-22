@@ -43,6 +43,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         }
     }).then(response => {
         // response as json array
+        console.groupCollapsed("Translation status");
         console.log(response.data.choices[0].message.content);
         const responsedTranslations = JSON.parse(response.data.choices[0].message.content);
         if (Array.isArray(responsedTranslations) && responsedTranslations.length === messages.length) {
@@ -63,7 +64,8 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             console.error(`Unexpected response from OpenAI endpoint: ${responsedTranslations}`);
         }
         // also log token usage
-        console.log(response.data.usage)
+        console.log(response.data.usage);
+        console.groupEnd();
     }).catch(error => {
         console.error(error);
     });

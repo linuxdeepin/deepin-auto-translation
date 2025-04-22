@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import fs from 'fs';
+import fs from 'node:fs';
 import * as YAML from 'js-yaml';
-import { execSync } from 'child_process';
+import { execSync } from 'node:child_process';
 import { TransifexResource, TransifexYaml } from './types';
 import * as Settings from './settings';
 
