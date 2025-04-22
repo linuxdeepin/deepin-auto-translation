@@ -8,7 +8,7 @@ import { execSync } from 'node:child_process';
 import { TransifexResource, TransifexYaml } from './types';
 import * as Settings from './settings';
 
-export function ensureLocalReposExist(resources: TransifexResource[])
+export function ensureLocalReposExist(resources: TransifexResource[], useMirror: boolean = true)
 {
     for (const resource of resources) {
         const { repository, branch, additionalMarker } = resource;
@@ -21,7 +21,7 @@ export function ensureLocalReposExist(resources: TransifexResource[])
         if (!fs.existsSync(repoPath)) {
             console.log(`repo ${repoPath} does not exist, cloning...`);
             let repoUrl = `https://github.com/${repository}.git`;
-            if (repoUrl.startsWith("https://github.com/linuxdeepin")) {
+            if (repoUrl.startsWith("https://github.com/linuxdeepin") && useMirror) {
                 // replace to `https://gitee.com/deepin-community` mirror for faster clone
                 repoUrl = repoUrl.replace("github.com/linuxdeepin", "gitee.com/deepin-community");
             }

@@ -38,6 +38,8 @@ export type TransifexResource = {
     additionalMarker: any, // could be used to mark if a resource is translated or not, can be `undefined`
 }
 
+export type TranslationOperation = (messages: MessageData[], targetLanguage: string, keepUnfinishedTypeAttr : boolean) => Promise<void>;
+
 export type MessageData = {
     translationElement: Element | null,
     context: string,

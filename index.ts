@@ -3,47 +3,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import fs from 'node:fs';
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
-import axios from 'axios';
 import * as YAML from 'js-yaml';
-import * as Secrets from './secrets';
 import * as QtLinguist from './qtlinguist';
+import * as OpenAI from './openai';
 import * as Ollama from './ollama';
 import * as Transifex from './transifex';
 import * as GitRepo from './gitrepo';
-import { MessageData, TransifexResource } from './types';
+import { MessageData, TransifexRepo, TransifexResource } from './types';
 import { exit } from 'node:process';
-
-async function translateLinguistTsFile(inputFilePath: string, keepUnfinishedTypeAttr : boolean = true) : Promise<number>
-{
-    const inputFileContents = fs.readFileSync(inputFilePath, 'utf8');
-    const doc = new DOMParser().parseFromString(inputFileContents, 'application/xml');
-    // <TS language="ar" version="2.1">
-    const tsElement = doc.getElementsByTagName('TS')[0];
-    let targetLanguage = tsElement.getAttribute('language')!;
-    if (targetLanguage === 'en') {
-        console.log(`${inputFilePath} is already in English, skipped...`);
-        return 0;
-    }
-    console.log(`Translating ${inputFilePath} to ${targetLanguage}`);
-
-    let translationQueue = QtLinguist.extractStringsFromDocument(doc);
-    console.log(`Extracted ${translationQueue.length} untranslated strings from file: ${inputFilePath}`)
-    // split translationQueue into batches, each batch contains 25 messages
-    const batchSize = 25;
-    for (let i = 0; i < translationQueue.length; i += batchSize) {
-        const batch = translationQueue.slice(i, i + batchSize);
-        await Ollama.fetchTranslations(batch, targetLanguage, keepUnfinishedTypeAttr);
-        fs.writeFileSync(inputFilePath, new XMLSerializer().serializeToString(doc));
-    }
-
-    return translationQueue.length;
-}
+import * as Translator from './translator';
 
 // You need to do the main auto-translate logic here.
 
 // The following one is just for demo purpose:
-Ollama.fetchTranslations([
+await OpenAI.fetchTranslations([
     {
         translationElement: null,
         context: "AppItemMenu",
@@ -76,50 +49,48 @@ Ollama.fetchTranslations([
     }
 ], 'ar', true);
 
-// translateLinguistTsFile('./repo/linuxdeepin/dde-shell/panels/notification/osd/default/translations/org.deepin.ds.osd.default_ar.ts', false);
-
-
-// use Transifex API to get a list of resources under o:linuxdeepin:p:deepin-desktop-environment
-// const resources = await Transifex.getAllLinkedResources('o:linuxdeepin:p:deepin-desktop-environment');
-// console.log(`Found ${resources.length} resources`, resources);
-
-
-// Transifex.uploadTranslatedFileToTransifex('ar', './dde-launchpad_ar.ts.ts', 'o:linuxdeepin:p:deepin-desktop-environment:r:bb726c8fc86b842e75820abb670f0f48');
-
 /*
-const transifexProjects = await Transifex.getAllProjects('o:linuxdeepin');
-fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
 
-// read transifex-projects.yml and get all resources form these projects
-// const transifexProjects = YAML.load(fs.readFileSync('./transifex-projects.yml', 'utf8')) as string[];
+A tipical workflow for open-sourced projects is to get all resources linked to Transifex's GitHub integration directly from Transifex.
+
+// Step 1: Get all known transifex projects of a Transifex organization:
+const transifexProjects = await Transifex.getAllProjects('o:linuxdeepin');
+// Step 2: Get all linked resources from these projects:
 const allResources = await Transifex.getAllLinkedResourcesFromProjects(transifexProjects);
-// save allResources to yaml file
-fs.writeFileSync('./transifex-resources.yml', YAML.dump(allResources));
+// Step 3: Clone repos from GitHub or mirror
+GitRepo.ensureLocalReposExist(allResources);
+// Step 4: Translate resources:
+await Translator.translateTransifexResources(OpenAI.fetchTranslations, transifexResources, 'ar', resourceFileBaseName);
+
+In practice, you might need to tweak these steps depending on your needs. For example, you might want to dump the result of a step to
+YAML for manual review/modification and load it back from YAML in the next step. This allows you skip certain translation resources
+when needed (e.g. add `additionalMarker: ignore` to a TranslationResource).
 */
 
 /*
-const transifexResources = YAML.load(fs.readFileSync('./transifex-resources.yml', 'utf8')) as TransifexResource[];
-GitRepo.ensureLocalReposExist(transifexResources);
-for (const resource of transifexResources) {
-    if (resource.additionalMarker === undefined) {
-        const resPath = GitRepo.getResourcePath(resource, 'ar');
-        if (resPath === '') {
-            console.log(`Skipping ${resource}...`);
-            resource.additionalMarker = 'skipped';
-            fs.writeFileSync('./transifex-resources.yml', YAML.dump(transifexResources));
-            continue;
-        }
-        console.log(resPath, "aaa");
-        const strCount = await translateLinguistTsFile(resPath, false);
-        if (strCount > 0) {
-            console.log(`Uploading ${resPath} to Transifex (${resource.transifexResourceId})...`);
-            Transifex.uploadTranslatedFileToTransifex('ar', resPath, resource.transifexResourceId);
-            resource.additionalMarker = 'translated';
-        } else {
-            console.log(`Skipping ${resPath}...`);
-            resource.additionalMarker = 'skipped';
-        }
-        fs.writeFileSync('./transifex-resources.yml', YAML.dump(transifexResources));
-    }
-}
+
+A tipical workflow for closed-source projects is to manually put `.tx/config` file locally, use `tx` transifex-cli to fetch all
+resources from Transifex, and then translate them locally.
+
+You can ask the maintainer to send you the `.tx/config` file, then put it under `repo/close-sourced/<project-name>/.tx/config`,
+then prepare a list of repos via something like:
+
+const repos : TransifexRepo[] = [
+    {
+        path: "./repo/close-sourced/deepin-mail",
+        txBranch: "master",
+        targetLanguageCodes: ["sl"]
+    },
+    {
+        path: "./repo/close-sourced/dde-printer",
+        txBranch: "-1",
+        targetLanguageCodes: ["gl_ES"]
+    },
+]
+
+Then you can use the following code to download resources, translate all resources and upload resources back to Transifex:
+
+// Download, Translate, and Upload in a single step.
+Translator.translateTransifexRepos(OpenAI.fetchTranslations, repos)
+
 */
