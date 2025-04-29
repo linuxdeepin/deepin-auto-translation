@@ -12,6 +12,7 @@ import * as GitRepo from './gitrepo';
 import { MessageData, TransifexRepo, TransifexResource } from './types';
 import { exit } from 'node:process';
 import * as Translator from './translator';
+import * as Doubao from './doubao';
 
 // You need to do the main auto-translate logic here.
 
