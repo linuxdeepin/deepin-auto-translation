@@ -3,11 +3,40 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { MessageData } from './types';
-import { Document } from '@xmldom/xmldom'
+import { Document } from '@xmldom/xmldom';
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-function createTsFileFromTemplate(targetLanguageCode: string, templateFilePath: string)
+export function createTsFileFromTemplate(targetLanguageCode: string, templateFilePath: string): string | null
 {
-    // /usr/lib/qt6/bin/lconvert -i ./dde-launchpad_ru.ts -o dde-launchpad_ar.ts -target-language ar -drop-translations
+    try {
+        // 构建目标文件路径
+        const templateDir = path.dirname(templateFilePath);
+        const templateFileName = path.basename(templateFilePath);
+        const targetFileName = templateFileName.replace(/_[a-z]{2}(?:_[A-Z]{2})?\.ts$/, `_${targetLanguageCode}.ts`);
+        const targetFilePath = path.join(templateDir, targetFileName);
+        
+        // 使用lconvert工具从模板创建目标语言文件
+        const command = `lconvert -i "${templateFilePath}" -o "${targetFilePath}" -target-language ${targetLanguageCode} -drop-translations`;
+        
+        console.log(`执行命令: ${command}`);
+        try {
+            execSync(command, { encoding: 'utf8' });
+        } catch (error) {
+            console.error(`执行lconvert命令失败:`, error);
+            return null;
+        }
+        
+        // 检查文件是否成功创建
+        if (fs.existsSync(targetFilePath)) {
+            return targetFilePath;
+        }
+        return null;
+    } catch (error) {
+        console.error('创建翻译文件模板失败:', error);
+        return null;
+    }
 }
 
 export function extractStringsFromDocument(doc: Document) : MessageData[]

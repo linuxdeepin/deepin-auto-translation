@@ -1,18 +1,17 @@
 // SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: CC0-1.0
-
 export const doubao = {
-    model: 'ep-xxxxxxxxxxxxxxx',
-    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxx'
+    model: 'xxxxxxxxxxxxxxxxxxxxx',
+    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxx '
 };
 
 export const openai = {
-    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxx'
+    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxxx'
 };
 
 export const transifex = {
-    accessKey: 'x/xxxxxxxxxxxxxxxxxxxxxxxxxx'
+    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 }
 
 export default {doubao, openai, transifex};

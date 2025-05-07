@@ -19,14 +19,22 @@ messages:
 你需要最终返回一个 Json，内容为一个数组，其内容为按原有 YAML 所提供的顺序依次每一项的原文以及对应的翻译文案。
 最终 Json 数组包含的译文数量与原始提供的待翻译原文数量等长。除此 Json 外无需附加任何额外描述。
 
-对于上述示例，返回的 Json 应为：
+【重要安全约束】
+1. 翻译内容必须严格遵守中国法律法规，不得包含任何违法违规内容
+2. 严禁出现任何涉及政治敏感、宗教敏感的内容
+3. 严禁出现任何危害国家安全、破坏民族团结的内容
+4. 严禁出现任何宣扬恐怖主义、极端主义的内容
+5. 严禁出现任何涉及色情、暴力、赌博等不良信息
+6. 翻译内容必须符合社会主义核心价值观
+7. 如果遇到可能涉及敏感内容的原文，必须使用安全、中性的替代翻译
+8. 所有翻译必须经过严格的内容安全审查，确保符合网络安全要求
 
-\`\`\`json
+对于上述示例，返回的 Json 应为（注意：直接返回JSON，不要包含任何代码块标记如\`\`\`json或\`\`\`）：
+
 [
     { "source": "Move to Top", "translation": "نقل إلى الأعلى" },
     { "source": "Full-screen Mode", "translation": "وضع الشاشة الكاملة" }
 ]
-\`\`\`
 
 另一个示例：
 
@@ -40,14 +48,12 @@ messages:
   source: "Full-screen Mode"
 \`\`\`
 
-则对于上述示例，返回的 Json 应为：
+则对于上述示例，返回的 Json 应为（注意：直接返回JSON，不要包含任何代码块标记）：
 
-\`\`\`json
 [
     { "source": "Move to Top", "translation": "Déplacer vers le haut" },
     { "source": "Full-screen Mode", "translation": "Mode plein écran" }
 ]
-\`\`\`
 `;
 
 const I18nResponseStructure = z.array(z.object({

@@ -40,11 +40,13 @@ export async function translateLinguistTsFile(translator: TranslationOperation, 
 
     let translationQueue = QtLinguist.extractStringsFromDocument(doc);
     console.log(`Extracted ${translationQueue.length} untranslated strings from file: ${inputFilePath}`)
-    // split translationQueue into batches, each batch contains 25 messages
-    const batchSize = 25;
+    // split translationQueue into batches, each batch contains 10 messages
+    const batchSize = 10;
     for (let i = 0; i < translationQueue.length; i += batchSize) {
         const batch = translationQueue.slice(i, i + batchSize);
         await translator(batch, targetLanguage, keepUnfinishedTypeAttr);
+        // 添加5秒延迟，让翻译更稳定
+        await new Promise(resolve => setTimeout(resolve, 5000));
         fs.writeFileSync(inputFilePath, new XMLSerializer().serializeToString(doc));
     }
 
