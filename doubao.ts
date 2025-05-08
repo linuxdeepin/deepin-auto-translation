@@ -45,7 +45,10 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
     }).then(response => {
         // response as json array
         console.log(response.data.choices[0].message.content);
-        const responsedTranslations = JSON.parse(response.data.choices[0].message.content);
+        // 豆包 API 返回的响应内容中包含了 Markdown 代码块标记（```json），这导致 JSON.parse() 无法正确解析
+        // 在解析 JSON 之前，先移除响应内容中可能存在的 Markdown 代码块标记（```json 和 ```）。
+        const content = response.data.choices[0].message.content.replace(/```json\n?|\n?```/g, '').trim();
+        const responsedTranslations = JSON.parse(content);
         if (Array.isArray(responsedTranslations) && responsedTranslations.length === messages.length) {
             console.log(`Translated ${messages.length} strings`);
             for (let i = 0; i < messages.length; i++) {
