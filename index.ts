@@ -40,8 +40,13 @@ const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
  // 把项目写到transifex-projects.yml文件中,方便后续读取
  fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
  const allResources = await Transifex.getAllLinkedResourcesFromProjects(YAML.load(fs.readFileSync('./transifex-projects.yml', 'utf8')) as string[]);
- //拉取代码
- GitRepo.ensureLocalReposExist(allResources);
+ 
+ // 过滤资源，只保留peeweep-test组织的仓库
+ const filteredResources = allResources.filter(resource => resource.repository.startsWith('peeweep-test/'));
+ console.log(`过滤前资源数量: ${allResources.length}, 过滤后: ${filteredResources.length}`);
+ 
+ // 拉取代码
+ GitRepo.ensureLocalReposExist(filteredResources);
 
 // 记录简体中文文件路径，用于后续处理繁体中文
 const zhCNFilePaths = new Map<string, string>();
