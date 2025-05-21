@@ -35,7 +35,13 @@ const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
  fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
 */
 
-const allResources = await Transifex.getAllLinkedResourcesFromProjects(YAML.load(fs.readFileSync('./transifex-projects.yml', 'utf8')) as string[]);
+ // 需要获取所有项目名后，再挑选需要的项目
+ const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
+ // 把项目写到transifex-projects.yml文件中,方便后续读取
+ fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
+ const allResources = await Transifex.getAllLinkedResourcesFromProjects(YAML.load(fs.readFileSync('./transifex-projects.yml', 'utf8')) as string[]);
+ //拉取代码
+ GitRepo.ensureLocalReposExist(allResources);
 
 // 记录简体中文文件路径，用于后续处理繁体中文
 const zhCNFilePaths = new Map<string, string>();

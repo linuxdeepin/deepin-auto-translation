@@ -25,12 +25,44 @@ export function ensureLocalReposExist(resources: TransifexResource[], useMirror:
                 // replace to `https://gitee.com/deepin-community` mirror for faster clone
                 repoUrl = repoUrl.replace("github.com/linuxdeepin", "gitee.com/deepin-community");
             }
-            execSync(`git clone ${repoUrl} ${repoPath} --branch ${branch} --depth=1`, {
-                stdio: 'inherit'
-            });
+            try {
+                // 设置超时和强制退出，避免无限等待
+                const cloneCommand = `git clone ${repoUrl} ${repoPath} --branch ${branch} --depth=1 --single-branch`;
+                console.log(`执行命令: ${cloneCommand}`);
+                
+                // 使用timeout命令设置超时，如果超过300秒（5分钟）则终止进程
+                const timeoutCommand = `timeout 300 ${cloneCommand}`;
+                execSync(timeoutCommand, {
+                    stdio: 'inherit',
+                    timeout: 300000 // 设置300秒(5分钟)超时
+                });
+                console.log(`repo ${repoPath} cloned successfully`);
+            } catch (error) {
+                // 如果克隆失败但是目录被部分创建了，尝试删除它
+                if (fs.existsSync(repoPath)) {
+                    try {
+                        console.error(`Clone failed for ${repoPath}, cleaning up partially created directory...`);
+                        execSync(`rm -rf ${repoPath}`);
+                    } catch (cleanupError) {
+                        console.error(`Failed to clean up ${repoPath}: ${cleanupError}`);
+                    }
+                }
+                
+                console.error(`Failed to clone ${repoPath}: ${error}`);
+                console.log(`Continuing with next repository...`);
+                continue; // 继续处理下一个仓库
+            }
         } else {
-            // TODO: updating?
-            console.log(`repo ${repoPath} exists, skipped...`);
+            // 检查已存在的仓库状态
+            try {
+                // 使用git status命令检查仓库状态，确认它是一个有效的git仓库
+                execSync(`cd ${repoPath} && git status`, { stdio: 'ignore', timeout: 5000 });
+                console.log(`repo ${repoPath} exists and is valid, skipped...`);
+            } catch (error) {
+                // 如果不是有效的git仓库，则报错并继续
+                console.error(`repo ${repoPath} exists but is not a valid git repository: ${error}`);
+                console.log(`Continuing with next repository...`);
+            }
         }
     }
 }
