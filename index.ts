@@ -34,7 +34,7 @@ const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
  fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
 */
 // 获取所有项目名
-console.log('测试。。。。。。。。。开始获取 Transifex 项目列表...');
+console.log('开始获取 Transifex 项目列表...');
 const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
 console.log(`成功获取 ${transifexProjects.length} 个项目`);
 fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
@@ -51,6 +51,33 @@ console.log('本地仓库准备完成');
 // 记录简体中文文件路径，用于后续处理繁体中文
 const zhCNFilePaths = new Map<string, string>();
 
+// 在开始翻译前添加编码转换检查
+async function ensureFileEncoding(filePath: string) {
+    try {
+        // 读取文件内容
+        let content = fs.readFileSync(filePath, 'utf8');
+        
+        // 检查是否包含替换字符
+        if (content.includes('')) {
+            console.log(`[警告] 文件 ${filePath} 包含Unicode替换字符，尝试修复编码问题...`);
+            
+            // 尝试使用不同编码重新读取
+            try {
+                // 这里我们假设原文件可能是latin1编码
+                content = fs.readFileSync(filePath, 'latin1');
+                
+                // 重新写入为UTF-8
+                fs.writeFileSync(filePath, content, 'utf8');
+                console.log(`[修复] 已将文件 ${filePath} 转换为UTF-8编码`);
+            } catch (encodeError) {
+                console.error(`[错误] 修复文件 ${filePath} 编码失败:`, encodeError);
+            }
+        }
+    } catch (error) {
+        console.error(`[错误] 检查文件 ${filePath} 编码时出错:`, error);
+    }
+}
+
 // 直接调用Translator进行翻译，跳过Transifex上传操作
 async function translateTsFile(filePath: string, langCode: string): Promise<boolean> {
     try {
@@ -61,6 +88,9 @@ async function translateTsFile(filePath: string, langCode: string): Promise<bool
             console.error(`文件不存在: ${filePath}`);
             return false;
         }
+        
+        // 检查文件编码
+        await ensureFileEncoding(filePath);
         
         // 读取文件内容
         const fileContent = fs.readFileSync(filePath, 'utf8');
@@ -230,6 +260,14 @@ async function main() {
     if (transifexFilesToUpload.length > 0) {
         console.log(`\n===== 步骤3：上传 ${transifexFilesToUpload.length} 个翻译文件到Transifex =====`);
         
+        // 添加10秒延迟，避免Transifex API限流
+        console.log(`\n[上传延迟] 等待10秒后开始上传文件到Transifex...`);
+        const delayStart = new Date();
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        const delayEnd = new Date();
+        const actualDelay = (delayEnd.getTime() - delayStart.getTime()) / 1000;
+        console.log(`[上传延迟] 延迟完成，实际等待了 ${actualDelay.toFixed(1)} 秒，开始上传文件`);
+        
         let successCount = 0;
         let skipCount = 0;
         let failCount = 0;
@@ -284,153 +322,217 @@ async function processTraditionalChineseFiles(
     
     // 获取工具的绝对路径
     const utilsPath = path.resolve(process.cwd(), './deepin-translation-utils');
-    console.log(`deepin-translation-utils工具的绝对路径: ${utilsPath}`);
+    console.log(`[繁体处理] deepin-translation-utils工具的绝对路径: ${utilsPath}`);
     
     // 检查工具是否存在
     if (!fs.existsSync(utilsPath)) {
-        console.error(`错误: deepin-translation-utils工具不存在于路径 ${utilsPath}`);
+        console.error(`[繁体处理错误] deepin-translation-utils工具不存在于路径 ${utilsPath}`);
         return processedFiles;
     }
     
     // 检查工具是否有执行权限
     try {
         fs.accessSync(utilsPath, fs.constants.X_OK);
-        console.log('deepin-translation-utils工具有执行权限');
+        console.log('[繁体处理] deepin-translation-utils工具有执行权限');
     } catch (error) {
-        console.error('错误: deepin-translation-utils工具没有执行权限', error);
+        console.error('[繁体处理错误] deepin-translation-utils工具没有执行权限', error);
         
         // 尝试添加执行权限
         try {
             execSync(`chmod +x ${utilsPath}`, { encoding: 'utf8' });
-            console.log('已添加执行权限');
+            console.log('[繁体处理] 已添加执行权限');
         } catch (chmodError) {
-            console.error('添加执行权限失败:', chmodError);
+            console.error('[繁体处理错误] 添加执行权限失败:', chmodError);
             return processedFiles;
         }
     }
     
-    for (const [repoPath, fileMap] of tcFileMap.entries()) {
-        console.log(`处理仓库: ${repoPath}`);
+    // 统计信息
+    let totalFiles = 0;
+    let processedCount = 0;
+    let errorCount = 0;
+    let skipCount = 0;
+    
+    // 计算需要处理的总文件数
+    for (const fileMap of tcFileMap.values()) {
+        totalFiles += fileMap.size;
+    }
+    
+    console.log(`[繁体处理] 开始处理共 ${totalFiles} 个繁体中文文件，使用串行处理方式`);
+    
+    // 使用 for...of 循环顺序处理所有仓库
+    const repoEntries = Array.from(tcFileMap.entries());
+    for (let repoIndex = 0; repoIndex < repoEntries.length; repoIndex++) {
+        const [repoPath, fileMap] = repoEntries[repoIndex];
+        console.log(`[繁体处理] [${repoIndex+1}/${repoEntries.length}] 处理仓库: ${repoPath}`);
         
-        for (const [baseFileName, langCode] of fileMap.entries()) {
-            console.log(`处理文件: ${baseFileName}, 目标语言: ${langCode}`);
+        // 使用 for...of 循环顺序处理仓库中的所有文件
+        const fileEntries = Array.from(fileMap.entries());
+        for (let fileIndex = 0; fileIndex < fileEntries.length; fileIndex++) {
+            const [baseFileName, langCode] = fileEntries[fileIndex];
+            const fileProgress = `[${processedCount+1}/${totalFiles}]`;
+            console.log(`[繁体处理] ${fileProgress} 开始处理文件: ${baseFileName}, 目标语言: ${langCode}`);
             
-            // 检查对应的简体中文文件是否存在
-            const zhCNFilePath = zhCNFilePaths.get(baseFileName);
-            
-            if (!zhCNFilePath) {
-                console.warn(`警告: 未找到与 ${baseFileName} 对应的简体中文文件，无法处理繁体中文`);
-                continue;
-            }
-            
-            // 使用path模块构建文件路径
-            const targetFilePath = path.join(
-                path.dirname(zhCNFilePath),
-                path.basename(zhCNFilePath).replace('_zh_CN.ts', `_${langCode}.ts`)
-            );
-            
-            console.log(`简体中文文件: ${zhCNFilePath}`);
-            console.log(`繁体中文文件: ${targetFilePath}`);
-            
-            // 确认文件存在
-            if (!fs.existsSync(targetFilePath)) {
-                console.warn(`警告: 繁体中文文件 ${targetFilePath} 不存在，尝试创建...`);
-                try {
-                    // 复制简体中文文件作为基础
-                    fs.copyFileSync(zhCNFilePath, targetFilePath);
-                    console.log(`创建了初始繁体中文文件: ${targetFilePath}`);
-                } catch (copyError) {
-                    console.error(`创建繁体中文文件时出错:`, copyError);
-                    continue;
-                }
-            }
-            
-            // 读取文件内容并检查是否有未翻译内容
-            let hasUnfinishedTranslations = false;
             try {
-                const fileContent = fs.readFileSync(targetFilePath, 'utf8');
+                // 检查对应的简体中文文件是否存在
+                const zhCNFilePath = zhCNFilePaths.get(baseFileName);
                 
-                // 检查文件中是否包含 <translation type="unfinished"/> 标签
-                hasUnfinishedTranslations = fileContent.includes('<translation type="unfinished"/>') || 
-                                            fileContent.includes('<translation type="unfinished"></translation>') ||
-                                            fileContent.includes('<translation type="unfinished">') ||
-                                            fileContent.match(/<translation(\s+type="unfinished"[^>]*)\s*\/>/g) !== null;
-                
-                if (!hasUnfinishedTranslations) {
-                    console.log(`繁体中文文件 ${targetFilePath} 没有未翻译内容，跳过处理`);
+                if (!zhCNFilePath) {
+                    console.warn(`[繁体处理警告] ${fileProgress} 未找到与 ${baseFileName} 对应的简体中文文件，无法处理繁体中文`);
+                    skipCount++;
                     continue;
                 }
                 
-                console.log(`检测到繁体中文文件 ${targetFilePath} 有未翻译内容，开始处理...`);
-            } catch (error) {
-                console.error(`读取繁体中文文件 ${targetFilePath} 时出错:`, error);
-                continue;
-            }
-            
-            // 构建并执行命令
-            try {
-                // 使用转义引号确保路径正确处理
-                const escapedZhCNFilePath = zhCNFilePath.replace(/"/g, '\\"');
+                // 使用path模块构建文件路径
+                const targetFilePath = path.join(
+                    path.dirname(zhCNFilePath),
+                    path.basename(zhCNFilePath).replace('_zh_CN.ts', `_${langCode}.ts`)
+                );
                 
-                // 构建绝对路径的命令
-                const command = `"${utilsPath}" zhconv --target-languages ${langCode} "${escapedZhCNFilePath}"`;
-                console.log(`执行命令: ${command}`);
+                console.log(`[繁体处理] ${fileProgress} 简体中文文件: ${zhCNFilePath}`);
+                console.log(`[繁体处理] ${fileProgress} 繁体中文文件: ${targetFilePath}`);
                 
-                try {
-                    // 设置合理的超时时间
-                    const output = execSync(command, { 
-                        encoding: 'utf8', 
-                        stdio: 'pipe',
-                        timeout: 60000  // 1分钟超时
-                    });
-                    console.log(`命令输出: ${output}`);
-                } catch (execError) {
-                    console.error(`执行命令失败:`, execError);
-                    
-                    // 尝试手动实现简单的繁体转换作为备选方案
-                    console.log(`尝试使用备选方案处理繁体中文文件...`);
+                // 确认文件存在
+                if (!fs.existsSync(targetFilePath)) {
+                    console.warn(`[繁体处理警告] ${fileProgress} 繁体中文文件 ${targetFilePath} 不存在，尝试创建...`);
                     try {
-                        // 读取简体文件内容
-                        const zhCNContent = fs.readFileSync(zhCNFilePath, 'utf8');
-                        // 手动替换一些简单的简繁对应字符
-                        let zhTWContent = zhCNContent
-                            .replace(/简体/g, '繁體')
-                            .replace(/计算机/g, '電腦')
-                            .replace(/软件/g, '軟體')
-                            .replace(/设置/g, '設置')
-                            .replace(/文件/g, '檔案');
-                        
-                        // 替换语言标记
-                        zhTWContent = zhTWContent.replace(/language="zh_CN"/g, `language="${langCode}"`);
-                        
-                        // 写入到目标文件
-                        fs.writeFileSync(targetFilePath, zhTWContent, 'utf8');
-                        console.log(`使用备选方案处理完成: ${targetFilePath}`);
-                    } catch (fallbackError) {
-                        console.error(`备选方案处理失败:`, fallbackError);
+                        // 复制简体中文文件作为基础
+                        fs.copyFileSync(zhCNFilePath, targetFilePath);
+                        console.log(`[繁体处理] ${fileProgress} 创建了初始繁体中文文件: ${targetFilePath}`);
+                    } catch (copyError) {
+                        console.error(`[繁体处理错误] ${fileProgress} 创建繁体中文文件时出错:`, copyError);
+                        errorCount++;
                         continue;
                     }
                 }
                 
-                // 添加到处理成功的文件列表
-                // 查找匹配的resource
-                const resource = allResources.find(res => res.repository === repoPath.replace('repo/', ''));
-                if (resource) {
-                    processedFiles.push({
-                        filePath: targetFilePath,
-                        langCode,
-                        resource
-                    });
+                // 读取文件内容并检查是否有未翻译内容
+                let hasUnfinishedTranslations = false;
+                try {
+                    const fileContent = fs.readFileSync(targetFilePath, 'utf8');
+                    
+                    // 检查文件中是否包含未翻译标记
+                    hasUnfinishedTranslations = fileContent.includes('<translation type="unfinished"/>') || 
+                                               fileContent.includes('<translation type="unfinished"></translation>') ||
+                                               fileContent.includes('<translation type="unfinished">') ||
+                                               fileContent.match(/<translation(\s+type="unfinished"[^>]*)\s*\/>/g) !== null;
+                    
+                    if (!hasUnfinishedTranslations) {
+                        console.log(`[繁体处理] ${fileProgress} 繁体中文文件 ${targetFilePath} 没有未翻译内容，跳过处理`);
+                        skipCount++;
+                        continue;
+                    }
+                    
+                    console.log(`[繁体处理] ${fileProgress} 检测到繁体中文文件 ${targetFilePath} 有未翻译内容，开始处理...`);
+                } catch (error) {
+                    console.error(`[繁体处理错误] ${fileProgress} 读取繁体中文文件 ${targetFilePath} 时出错:`, error);
+                    errorCount++;
+                    continue;
                 }
                 
-                console.log(`繁体中文文件处理完成: ${targetFilePath}`);
-            } catch (error) {
-                console.error(`处理繁体中文文件 ${baseFileName} (${langCode}) 时出错:`, error);
+                // 构建并执行命令
+                try {
+                    // 使用转义引号确保路径正确处理
+                    const escapedZhCNFilePath = zhCNFilePath.replace(/"/g, '\\"');
+                    
+                    // 构建绝对路径的命令 - 始终使用通用命令同时生成zh_HK和zh_TW
+                    const command = `"${utilsPath}" zhconv "${escapedZhCNFilePath}"`;
+                    console.log(`[繁体处理] ${fileProgress} 使用通用命令处理(将同时生成zh_HK和zh_TW)`);
+                    console.log(`[繁体处理] ${fileProgress} 执行命令: ${command}`);
+                    
+                    try {
+                        // 设置更长的超时时间，确保在CI环境有足够时间处理
+                        const output = execSync(command, { 
+                            encoding: 'utf8', 
+                            stdio: 'pipe',
+                            timeout: 120000  // 2分钟超时，CI环境可能较慢
+                        });
+                        console.log(`[繁体处理] ${fileProgress} 命令执行成功，输出: ${output.substring(0, 200)}${output.length > 200 ? '...(输出过长已截断)' : ''}`);
+                        
+                        // 验证转换后的文件是否存在
+                        if (fs.existsSync(targetFilePath)) {
+                            console.log(`[繁体处理] ${fileProgress} 验证文件存在: ${targetFilePath}`);
+                            
+                            // 验证文件大小是否合理
+                            const targetStats = fs.statSync(targetFilePath);
+                            const sourceStats = fs.statSync(zhCNFilePath);
+                            if (targetStats.size < sourceStats.size * 0.5) {
+                                console.warn(`[繁体处理警告] ${fileProgress} 生成的文件大小异常，源文件: ${sourceStats.size} 字节，目标文件: ${targetStats.size} 字节`);
+                            } else {
+                                console.log(`[繁体处理] ${fileProgress} 文件大小合理，源文件: ${sourceStats.size} 字节，目标文件: ${targetStats.size} 字节`);
+                            }
+                        } else {
+                            throw new Error(`转换后的文件不存在: ${targetFilePath}`);
+                        }
+                    } catch (execError) {
+                        console.error(`[繁体处理错误] ${fileProgress} 执行命令失败:`, execError);
+                        
+                        // 尝试手动实现简单的繁体转换作为备选方案
+                        console.log(`[繁体处理] ${fileProgress} 尝试使用备选方案处理繁体中文文件...`);
+                        try {
+                            // 读取简体文件内容
+                            const zhCNContent = fs.readFileSync(zhCNFilePath, 'utf8');
+                            console.log(`[繁体处理] ${fileProgress} 已读取简体文件内容，长度: ${zhCNContent.length} 字节`);
+                            
+                            // 手动替换一些简单的简繁对应字符
+                            let zhTWContent = zhCNContent
+                                .replace(/简体/g, '繁體')
+                                .replace(/计算机/g, '電腦')
+                                .replace(/软件/g, '軟體')
+                                .replace(/设置/g, '設置')
+                                .replace(/文件/g, '檔案');
+                            
+                            // 替换语言标记
+                            zhTWContent = zhTWContent.replace(/language="zh_CN"/g, `language="${langCode}"`);
+                            console.log(`[繁体处理] ${fileProgress} 已替换常用简繁字符，准备写入文件`);
+                            
+                            // 写入到目标文件
+                            fs.writeFileSync(targetFilePath, zhTWContent, 'utf8');
+                            console.log(`[繁体处理] ${fileProgress} 使用备选方案处理完成: ${targetFilePath}`);
+                        } catch (fallbackError) {
+                            console.error(`[繁体处理错误] ${fileProgress} 备选方案处理失败:`, fallbackError);
+                            errorCount++;
+                            continue;
+                        }
+                    }
+                    
+                    // 添加到处理成功的文件列表
+                    // 查找匹配的resource
+                    const resource = allResources.find(res => res.repository === repoPath.replace('repo/', ''));
+                    if (resource) {
+                        processedFiles.push({
+                            filePath: targetFilePath,
+                            langCode,
+                            resource
+                        });
+                        console.log(`[繁体处理] ${fileProgress} 已添加到处理成功列表: ${targetFilePath}`);
+                    } else {
+                        console.warn(`[繁体处理警告] ${fileProgress} 未找到匹配的resource: ${repoPath.replace('repo/', '')}`);
+                    }
+                    
+                    processedCount++;
+                    console.log(`[繁体处理] ${fileProgress} 繁体中文文件处理完成: ${targetFilePath}`);
+                    
+                    // 添加延迟，避免CI环境中资源竞争
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } catch (error) {
+                    console.error(`[繁体处理错误] ${fileProgress} 处理繁体中文文件 ${baseFileName} (${langCode}) 时出错:`, error);
+                    errorCount++;
+                }
+            } catch (outerError) {
+                console.error(`[繁体处理严重错误] ${fileProgress} 处理文件 ${baseFileName} 时发生未捕获异常:`, outerError);
+                errorCount++;
             }
         }
     }
     
-    console.log(`繁体中文处理总结: 处理了 ${processedFiles.length} 个文件`);
+    console.log(`\n[繁体处理] ========== 处理总结 ==========`);
+    console.log(`[繁体处理] 总文件数: ${totalFiles}`);
+    console.log(`[繁体处理] 成功处理: ${processedCount} 文件`);
+    console.log(`[繁体处理] 跳过处理: ${skipCount} 文件`);
+    console.log(`[繁体处理] 处理失败: ${errorCount} 文件`);
+    console.log(`[繁体处理] 添加到上传列表: ${processedFiles.length} 文件`);
+    
     return processedFiles;
 }
 
