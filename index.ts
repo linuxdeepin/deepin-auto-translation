@@ -146,9 +146,6 @@ async function main() {
     const nonTraditionalFiles = filesToTranslate.filter(item => 
         !(['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese));
     
-    // 创建用于记录繁体中文处理信息的数据结构
-    const tcFileMap = new Map<string, Map<string, string>>();
-    
     // 记录需要上传到Transifex的文件
     const transifexFilesToUpload: { file: string; language: string; resource: TransifexResource }[] = [];
     
@@ -205,7 +202,9 @@ async function main() {
     // 第二步：收集并处理繁体中文文件
     console.log('\n===== 步骤2：处理繁体中文文件 =====');
     
-    // 收集繁体中文文件信息
+    // 收集繁体中文文件信息 - 改为使用数组而非Map存储，避免相同baseFileName的不同语言版本互相覆盖
+    const traditionalChineseFiles: { baseFileName: string; langCode: string; repoPath: string; resource: any }[] = [];
+    
     for (const { file, langCode, resource, repoPath } of traditionalFiles) {
         if (!repoPath) continue;
         
@@ -232,17 +231,34 @@ async function main() {
             }
         }
         
-        // 记录到繁体中文处理映射中
-        if (!tcFileMap.has(repoPath)) {
-            tcFileMap.set(repoPath, new Map());
-        }
-        tcFileMap.get(repoPath)?.set(baseFileName, langCode);
+        // 添加到繁体中文文件数组
+        traditionalChineseFiles.push({
+            baseFileName,
+            langCode,
+            repoPath,
+            resource
+        });
     }
     
     // 使用 deepin-translation-utils 处理繁体中文文件
-    if (tcFileMap.size > 0) {
-        console.log('\n开始使用 deepin-translation-utils 处理繁体中文文件...');
-        const tcFilesResult = await processTraditionalChineseFiles(tcFileMap);
+    if (traditionalChineseFiles.length > 0) {
+        console.log(`\n开始使用 deepin-translation-utils 处理繁体中文文件...共有 ${traditionalChineseFiles.length} 个文件需要处理`);
+        
+        // 按仓库分组，方便后续处理
+        const repoGroups = new Map<string, { baseFileName: string; langCode: string; resource: any }[]>();
+        
+        for (const file of traditionalChineseFiles) {
+            if (!repoGroups.has(file.repoPath)) {
+                repoGroups.set(file.repoPath, []);
+            }
+            repoGroups.get(file.repoPath)?.push({
+                baseFileName: file.baseFileName,
+                langCode: file.langCode,
+                resource: file.resource
+            });
+        }
+        
+        const tcFilesResult = await processTraditionalChineseFiles(repoGroups);
         
         // 添加繁体中文文件到待上传列表
         for (const { filePath, langCode, resource } of tcFilesResult) {
@@ -311,11 +327,11 @@ async function main() {
 
 /**
  * 使用 deepin-translation-utils 处理繁体中文文件
- * @param tcFileMap 繁体中文文件映射：仓库路径 -> (基本文件名 -> 语言代码)
+ * @param repoGroups 繁体中文文件分组：仓库路径 -> [{baseFileName, langCode, resource}]
  * @returns 处理成功的繁体中文文件信息数组
  */
 async function processTraditionalChineseFiles(
-    tcFileMap: Map<string, Map<string, string>>
+    repoGroups: Map<string, { baseFileName: string; langCode: string; resource: any }[]>
 ): Promise<{ filePath: string; langCode: string; resource: any }[]> {
     const processedFiles: { filePath: string; langCode: string; resource: any }[] = [];
     const { execSync } = require('child_process');
@@ -354,22 +370,21 @@ async function processTraditionalChineseFiles(
     let skipCount = 0;
     
     // 计算需要处理的总文件数
-    for (const fileMap of tcFileMap.values()) {
-        totalFiles += fileMap.size;
+    for (const files of repoGroups.values()) {
+        totalFiles += files.length;
     }
     
     console.log(`[繁体处理] 开始处理共 ${totalFiles} 个繁体中文文件，使用串行处理方式`);
     
     // 使用 for...of 循环顺序处理所有仓库
-    const repoEntries = Array.from(tcFileMap.entries());
+    const repoEntries = Array.from(repoGroups.entries());
     for (let repoIndex = 0; repoIndex < repoEntries.length; repoIndex++) {
-        const [repoPath, fileMap] = repoEntries[repoIndex];
+        const [repoPath, files] = repoEntries[repoIndex];
         console.log(`[繁体处理] [${repoIndex+1}/${repoEntries.length}] 处理仓库: ${repoPath}`);
         
         // 使用 for...of 循环顺序处理仓库中的所有文件
-        const fileEntries = Array.from(fileMap.entries());
-        for (let fileIndex = 0; fileIndex < fileEntries.length; fileIndex++) {
-            const [baseFileName, langCode] = fileEntries[fileIndex];
+        for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+            const { baseFileName, langCode, resource } = files[fileIndex];
             const fileProgress = `[${processedCount+1}/${totalFiles}]`;
             console.log(`[繁体处理] ${fileProgress} 开始处理文件: ${baseFileName}, 目标语言: ${langCode}`);
             
@@ -437,7 +452,7 @@ async function processTraditionalChineseFiles(
                     
                     // 构建绝对路径的命令 - 始终使用通用命令同时生成zh_HK和zh_TW
                     const command = `"${utilsPath}" zhconv "${escapedZhCNFilePath}"`;
-                    console.log(`[繁体处理] ${fileProgress} 使用通用命令处理(将同时生成zh_HK和zh_TW)`);
+                    console.log(`[繁体处理] ${fileProgress} 使用通用命令处理(同时生成zh_HK和zh_TW文件)`);
                     console.log(`[繁体处理] ${fileProgress} 执行命令: ${command}`);
                     
                     try {
@@ -447,7 +462,7 @@ async function processTraditionalChineseFiles(
                             stdio: 'pipe',
                             timeout: 120000  // 2分钟超时，CI环境可能较慢
                         });
-                        console.log(`[繁体处理] ${fileProgress} 命令执行成功，输出: ${output.substring(0, 200)}${output.length > 200 ? '...(输出过长已截断)' : ''}`);
+                        console.log(`[繁体处理] ${fileProgress} 命令执行成功${output.trim() ? '，输出: ' + output.trim() : '，无输出'}`);
                         
                         // 验证转换后的文件是否存在
                         if (fs.existsSync(targetFilePath)) {
@@ -532,6 +547,14 @@ async function processTraditionalChineseFiles(
     console.log(`[繁体处理] 跳过处理: ${skipCount} 文件`);
     console.log(`[繁体处理] 处理失败: ${errorCount} 文件`);
     console.log(`[繁体处理] 添加到上传列表: ${processedFiles.length} 文件`);
+    
+    // 列出成功处理的文件路径和语言
+    if (processedFiles.length > 0) {
+        console.log(`\n[繁体处理] 成功处理的文件列表:`);
+        processedFiles.forEach((item, index) => {
+            console.log(`[繁体处理] ${index+1}. ${item.filePath} (${item.langCode})`);
+        });
+    }
     
     return processedFiles;
 }
