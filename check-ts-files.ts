@@ -189,13 +189,18 @@ function findTsFiles(dir: string): string[] {
  * - project_zh_CN.ts
  * - translation_zh_CN.ts
  * - 任何前缀_zh_CN.ts
+ * - 任何前缀_ast.ts（三字母语言代码）
+ * - 任何前缀_af_ZA.ts（带地区的语言代码）
  * 
  * @param filename 文件名
  * @returns 语言代码或null（如果不匹配）
  */
 function extractLanguageCode(filename: string): string | null {
-    // 使用更通用的正则表达式匹配任何前缀后跟下划线和语言代码的模式
-    const match = filename.match(/.*_([a-z]{2}(?:_[A-Z]{2})?)\.ts$/);
+    // 使用更宽松的正则表达式，支持：
+    // 1. 2-3个字母的语言代码
+    // 2. 带地区的语言代码（如af_ZA）
+    // 3. 支持任意前缀
+    const match = filename.match(/.*_([a-z]{2,3}(?:_[A-Z]{2,3})?)\.ts$/);
     if (!match) return null;
     return match[1];
 }
@@ -324,7 +329,9 @@ export async function processAllTsFiles() {
                 }
                 
                 if (!languageCodes.includes(langCode)) {
-                    console.log(`  跳过文件 ${file} - 语言代码 ${langCode} 不在language.yml中`);
+                    console.log(`  注意：文件 ${file} - 语言代码 ${langCode} 不在language.yml中，但作为tx pull获取的新语种将被处理`);
+                    // 仍然添加到匹配文件中进行处理
+                    matchingTsFiles.push({ file, langCode });
                     continue;
                 }
                 
