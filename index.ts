@@ -230,18 +230,36 @@ async function main() {
     if (transifexFilesToUpload.length > 0) {
         console.log(`\n===== 步骤3：上传 ${transifexFilesToUpload.length} 个翻译文件到Transifex =====`);
         
+        let successCount = 0;
+        let skipCount = 0;
+        let failCount = 0;
+        
         for (let i = 0; i < transifexFilesToUpload.length; i++) {
             const { file, language, resource } = transifexFilesToUpload[i];
             console.log(`\n[${i+1}/${transifexFilesToUpload.length}] 上传文件到Transifex: ${file} (${language})`);
             
             try {
-                // 使用Transifex模块的uploadTranslation方法上传
-                await Transifex.uploadTranslatedFileToTransifex(language, file, resource.transifexResourceId);
-                console.log(`文件 ${file} 上传成功`);
+                // 使用Transifex模块的uploadTranslation方法上传，处理返回结果
+                const result = await Transifex.uploadTranslatedFileToTransifex(language, file, resource.transifexResourceId);
+                
+                if (result === true) {
+                    successCount++;
+                    console.log(`文件 ${file} 处理完成`);
+                } else {
+                    failCount++;
+                    console.error(`文件 ${file} 上传失败`);
+                }
             } catch (error) {
-                console.error(`上传文件 ${file} 到Transifex时出错:`, error);
+                failCount++;
+                console.error(`上传文件 ${file} 到Transifex时发生异常:`, error);
             }
         }
+        
+        // 输出上传统计
+        console.log(`\n===== 上传统计 =====`);
+        console.log(`总计处理: ${transifexFilesToUpload.length} 个文件`);
+        console.log(`成功: ${successCount} 个文件`);
+        console.log(`失败: ${failCount} 个文件`);
     }
     
     console.log(`\n翻译任务完成，成功翻译 ${translatedFiles.size} 个文件`);

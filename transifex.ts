@@ -89,34 +89,71 @@ export async function getAllLinkedResourcesFromProjects(projectIds: string[])
 }
 
 // resourceId: string, like "o:linuxdeepin:p:deepin-desktop-environment:r:m23--dde-launchpad"
-export async function uploadTranslatedFileToTransifex(language: string, filepath: string, resourceId: string)
-{
-    const formData = new FormData();
-    formData.append('content', await fs.openAsBlob(filepath));
-    formData.append('file_type', 'default')
-    formData.append('language', `l:${language}`);
-    formData.append('resource', resourceId);
-    console.log(`Uploading ${filepath} to Transifex (${resourceId})...`, formData);
-
-    fetch('https://rest.api.transifex.com/resource_translations_async_uploads', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${Secrets.transifex.accessKey}`
-        },
-        body: formData
-    })
-    .then(response => {
+export async function uploadTranslatedFileToTransifex(language: string, filepath: string, resourceId: string): Promise<boolean> {
+    console.log(`准备上传文件 ${filepath} 到Transifex资源 ${resourceId}, 语言: ${language}`);
+    
+    try {
+        // 首先读取文件内容
+        const fileContent = await fs.promises.readFile(filepath, 'utf8');
+        const fileSize = Buffer.byteLength(fileContent);
+        console.log(`文件大小: ${fileSize} 字节`);
+        
+        // 创建FormData
+        const formData = new FormData();
+        formData.append('content', await fs.openAsBlob(filepath));
+        formData.append('file_type', 'default');
+        formData.append('language', `l:${language}`);
+        formData.append('resource', resourceId);
+        
+        console.log(`开始上传文件到Transifex...`);
+        
+        const response = await fetch('https://rest.api.transifex.com/resource_translations_async_uploads', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${Secrets.transifex.accessKey}`
+            },
+            body: formData
+        });
+        
+        // 解析响应
+        const responseText = await response.text();
+        
+        // 检查HTTP状态码
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // 处理409冲突错误
+            if (response.status === 409) {
+                console.log(`⚠️ 文件 ${filepath} 上传时发生冲突(HTTP 409)。这通常意味着相同内容已存在于Transifex上。`);
+                console.log(`这不是错误，表示文件已经存在且内容相同，无需重复上传。`);
+                return true; // 视为成功，因为文件内容已存在
+            } else {
+                let errorDetail = "未知错误";
+                try {
+                    const errorJson = JSON.parse(responseText);
+                    if (errorJson.errors && errorJson.errors.length > 0) {
+                        errorDetail = `${errorJson.errors[0].code}: ${errorJson.errors[0].detail}`;
+                    }
+                } catch (e) {
+                    errorDetail = responseText || `HTTP错误! 状态码: ${response.status}`;
+                }
+                
+                console.error(`❌ 上传文件 ${filepath} 失败: ${errorDetail}`);
+                return false;
+            }
         }
-        return response.json();
-    })
-    .then(data => {
-        console.log(data);
-    })
-    .catch(error => {
-        console.error('Error uploading file:', error);
-    });
+        
+        // 成功响应
+        try {
+            const data = JSON.parse(responseText);
+            console.log(`✅ 文件 ${filepath} 上传成功! 响应: `, data);
+            return true;
+        } catch (parseError) {
+            console.log(`✅ 文件 ${filepath} 上传成功，但无法解析响应: ${responseText}`);
+            return true;
+        }
+    } catch (error) {
+        console.error(`❌ 上传文件 ${filepath} 时发生异常:`, error);
+        return false;
+    }
 }
 
 export function isEmptyTxRepo(repo: TransifexRepo): boolean {
