@@ -59,7 +59,7 @@ async function ensureFileEncoding(filePath: string) {
         
         // 检查是否包含替换字符
         if (content.includes('')) {
-            console.log(`[警告] 文件 ${filePath} 包含Unicode替换字符，尝试修复编码问题...`);
+            //console.log(`[警告] 文件 ${filePath} 包含Unicode替换字符，尝试修复编码问题...`);
             
             // 尝试使用不同编码重新读取
             try {
@@ -68,7 +68,7 @@ async function ensureFileEncoding(filePath: string) {
                 
                 // 重新写入为UTF-8
                 fs.writeFileSync(filePath, content, 'utf8');
-                console.log(`[修复] 已将文件 ${filePath} 转换为UTF-8编码`);
+              //  console.log(`[修复] 已将文件 ${filePath} 转换为UTF-8编码`);
             } catch (encodeError) {
                 console.error(`[错误] 修复文件 ${filePath} 编码失败:`, encodeError);
             }
@@ -450,9 +450,9 @@ async function processTraditionalChineseFiles(
                     // 使用转义引号确保路径正确处理
                     const escapedZhCNFilePath = zhCNFilePath.replace(/"/g, '\\"');
                     
-                    // 构建绝对路径的命令 - 始终使用通用命令同时生成zh_HK和zh_TW
-                    const command = `"${utilsPath}" zhconv "${escapedZhCNFilePath}"`;
-                    console.log(`[繁体处理] ${fileProgress} 使用通用命令处理(同时生成zh_HK和zh_TW文件)`);
+                    // 构建绝对路径的命令 - 使用带-t参数的特定命令独立处理每种语言
+                    const command = `"${utilsPath}" zhconv -t ${langCode} "${escapedZhCNFilePath}"`;
+                    console.log(`[繁体处理] ${fileProgress} 开始生成${langCode}文件`);
                     console.log(`[繁体处理] ${fileProgress} 执行命令: ${command}`);
                     
                     try {
