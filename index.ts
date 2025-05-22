@@ -346,21 +346,18 @@ async function processTraditionalChineseFiles(
         return processedFiles;
     }
     
-    // 检查工具是否有执行权限
+    // 检查工具是否有执行权限并添加权限
     try {
+        // 先主动添加执行权限，确保CI环境下工具可执行
+        execSync(`chmod +x "${utilsPath}"`, { encoding: 'utf8' });
+        console.log('[繁体处理] 已添加执行权限');
+        
+        // 再次检查是否有执行权限
         fs.accessSync(utilsPath, fs.constants.X_OK);
         console.log('[繁体处理] deepin-translation-utils工具有执行权限');
     } catch (error) {
-        console.error('[繁体处理错误] deepin-translation-utils工具没有执行权限', error);
-        
-        // 尝试添加执行权限
-        try {
-            execSync(`chmod +x ${utilsPath}`, { encoding: 'utf8' });
-            console.log('[繁体处理] 已添加执行权限');
-        } catch (chmodError) {
-            console.error('[繁体处理错误] 添加执行权限失败:', chmodError);
-            return processedFiles;
-        }
+        console.error('[繁体处理错误] deepin-translation-utils工具权限检查或修改失败', error);
+        console.log('[繁体处理] 将使用备选方案处理繁体中文文件');
     }
     
     // 统计信息
@@ -460,7 +457,8 @@ async function processTraditionalChineseFiles(
                         const output = execSync(command, { 
                             encoding: 'utf8', 
                             stdio: 'pipe',
-                            timeout: 120000  // 2分钟超时，CI环境可能较慢
+                            timeout: 120000,  // 2分钟超时，CI环境可能较慢
+                            shell: '/bin/bash'  // 显式指定shell，避免环境差异
                         });
                         console.log(`[繁体处理] ${fileProgress} 命令执行成功${output.trim() ? '，输出: ' + output.trim() : '，无输出'}`);
                         
