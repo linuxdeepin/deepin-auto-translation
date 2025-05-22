@@ -346,21 +346,19 @@ async function processTraditionalChineseFiles(
         return processedFiles;
     }
     
-    // 检查工具是否有执行权限
+    // 检查工具是否有执行权限并添加权限
     try {
+        // 先主动添加执行权限，确保CI环境下工具可执行
+        execSync(`chmod +x "${utilsPath}"`, { encoding: 'utf8' });
+        console.log('[繁体处理] 已添加执行权限');
+        
+        // 再次检查是否有执行权限
         fs.accessSync(utilsPath, fs.constants.X_OK);
         console.log('[繁体处理] deepin-translation-utils工具有执行权限');
     } catch (error) {
-        console.error('[繁体处理错误] deepin-translation-utils工具没有执行权限', error);
-        
-        // 尝试添加执行权限
-        try {
-            execSync(`chmod +x ${utilsPath}`, { encoding: 'utf8' });
-            console.log('[繁体处理] 已添加执行权限');
-        } catch (chmodError) {
-            console.error('[繁体处理错误] 添加执行权限失败:', chmodError);
-            return processedFiles;
-        }
+        console.error('[繁体处理错误] deepin-translation-utils工具权限检查或修改失败', error);
+        console.error('[繁体处理错误] 无法继续处理繁体中文文件，请确保工具可执行');
+        return processedFiles;
     }
     
     // 统计信息
@@ -460,7 +458,8 @@ async function processTraditionalChineseFiles(
                         const output = execSync(command, { 
                             encoding: 'utf8', 
                             stdio: 'pipe',
-                            timeout: 120000  // 2分钟超时，CI环境可能较慢
+                            timeout: 120000,  // 2分钟超时，CI环境可能较慢
+                            shell: '/bin/bash'  // 显式指定shell，避免环境差异
                         });
                         console.log(`[繁体处理] ${fileProgress} 命令执行成功${output.trim() ? '，输出: ' + output.trim() : '，无输出'}`);
                         
@@ -482,33 +481,10 @@ async function processTraditionalChineseFiles(
                     } catch (execError) {
                         console.error(`[繁体处理错误] ${fileProgress} 执行命令失败:`, execError);
                         
-                        // 尝试手动实现简单的繁体转换作为备选方案
-                        console.log(`[繁体处理] ${fileProgress} 尝试使用备选方案处理繁体中文文件...`);
-                        try {
-                            // 读取简体文件内容
-                            const zhCNContent = fs.readFileSync(zhCNFilePath, 'utf8');
-                            console.log(`[繁体处理] ${fileProgress} 已读取简体文件内容，长度: ${zhCNContent.length} 字节`);
-                            
-                            // 手动替换一些简单的简繁对应字符
-                            let zhTWContent = zhCNContent
-                                .replace(/简体/g, '繁體')
-                                .replace(/计算机/g, '電腦')
-                                .replace(/软件/g, '軟體')
-                                .replace(/设置/g, '設置')
-                                .replace(/文件/g, '檔案');
-                            
-                            // 替换语言标记
-                            zhTWContent = zhTWContent.replace(/language="zh_CN"/g, `language="${langCode}"`);
-                            console.log(`[繁体处理] ${fileProgress} 已替换常用简繁字符，准备写入文件`);
-                            
-                            // 写入到目标文件
-                            fs.writeFileSync(targetFilePath, zhTWContent, 'utf8');
-                            console.log(`[繁体处理] ${fileProgress} 使用备选方案处理完成: ${targetFilePath}`);
-                        } catch (fallbackError) {
-                            console.error(`[繁体处理错误] ${fileProgress} 备选方案处理失败:`, fallbackError);
-                            errorCount++;
-                            continue;
-                        }
+                        // 不再使用备选方案，直接记录错误并跳过
+                        console.error(`[繁体处理错误] ${fileProgress} 无法使用deepin-translation-utils工具处理文件，跳过处理`);
+                        errorCount++;
+                        continue;
                     }
                     
                     // 添加到处理成功的文件列表
