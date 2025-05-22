@@ -7,6 +7,7 @@ import { execSync } from 'child_process';
 import * as Transifex from './transifex';
 import { createTsFileFromTemplate } from './qtlinguist';
 import path from 'path';
+import process from 'process';
 
 // 定义小语种列表
 const MINOR_LANGUAGES = {
@@ -140,6 +141,49 @@ function safeExecSync(command: string, defaultValue: string = ""): string {
 }
 
 /**
+ * 查找目录中的所有ts文件，使用JS实现而不是依赖find命令
+ * 这样可以提高在不同环境中的一致性
+ */
+function findTsFiles(dir: string): string[] {
+    const results: string[] = [];
+    console.log(`开始在目录 ${dir} 中查找ts文件...`);
+    
+    function findRecursively(currentDir: string) {
+        try {
+            console.log(`扫描目录: ${currentDir}`);
+            const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+            
+            for (const entry of entries) {
+                const fullPath = path.join(currentDir, entry.name);
+                
+                // 跳过node_modules和.git目录
+                if (entry.isDirectory()) {
+                    if (entry.name !== 'node_modules' && entry.name !== '.git') {
+                        findRecursively(fullPath);
+                    } else {
+                        console.log(`跳过目录: ${fullPath}`);
+                    }
+                } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+                    console.log(`找到ts文件: ${fullPath}`);
+                    results.push(fullPath);
+                }
+            }
+        } catch (error) {
+            console.error(`读取目录 ${currentDir} 内容时出错:`, error);
+        }
+    }
+    
+    try {
+        findRecursively(dir);
+    } catch (error) {
+        console.error(`查找目录 ${dir} 中的ts文件时出错:`, error);
+    }
+    
+    console.log(`在目录 ${dir} 中共找到 ${results.length} 个ts文件`);
+    return results;
+}
+
+/**
  * 从文件名中提取语言代码
  * 支持多种命名格式，如：
  * - project_zh_CN.ts
@@ -189,10 +233,17 @@ export async function processAllTsFiles() {
             
         console.log(`从脚本根目录的language.yml中读取到${languageCodes.length}种语言: ${languageCodes.join(', ')}`);
         
+        // 添加当前工作目录信息
+        console.log(`当前工作目录: ${process.cwd()}`);
+        
         // 从 YAML 文件中读取所有项目信息
         const allResources = await loadAllResources();
 
         console.log(`从transifex-projects.yml中读取到${allResources.length}个项目`);
+        // 输出项目信息，便于调试
+        allResources.forEach((res, index) => {
+            console.log(`项目${index+1}: ${JSON.stringify(res)}`);
+        });
 
         // 遍历每个项目
         for (const resource of allResources) {
@@ -219,22 +270,32 @@ export async function processAllTsFiles() {
             // 查找所有ts文件 - 分步骤执行以便更好地调试
             console.log(`开始查找ts文件...`);
             
-            // 步骤1: 只用find找ts文件，不用grep过滤
-            const findCmd = `find ${repoPath} -name "*.ts" -type f`;
-            console.log(`执行命令: ${findCmd}`);
-            const allTsFiles = safeExecSync(findCmd, "");
+            // 首先检查translations目录
+            const translationsDir = path.join(repoPath, 'translations');
+            let tsFilePaths: string[] = [];
             
-            if (!allTsFiles.trim()) {
+            if (fs.existsSync(translationsDir)) {
+                console.log(`检测到translations目录，优先从该目录查找ts文件`);
+                tsFilePaths = findTsFiles(translationsDir);
+                console.log(`在translations目录中找到${tsFilePaths.length}个ts文件`);
+            }
+            
+            // 如果translations目录没有找到或没有ts文件，则继续在整个仓库中查找
+            if (tsFilePaths.length === 0) {
+                console.log(`在translations目录中未找到ts文件，继续在整个仓库中查找`);
+                tsFilePaths = findTsFiles(repoPath);
+                console.log(`在整个仓库中找到${tsFilePaths.length}个ts文件`);
+            }
+            
+            if (tsFilePaths.length === 0) {
                 console.log(`仓库 ${repository} 中没有找到任何ts文件`);
                 continue;
             }
             
-            // 步骤2: 在JavaScript中过滤掉node_modules和.git目录中的文件
-            let tsFiles = allTsFiles.trim().split('\n')
-                .filter(file => !file.includes('node_modules') && !file.includes('.git'))
-                .map(file => file.replace(`${repoPath}/`, ''));
+            // 步骤2: 在JavaScript中过滤掉node_modules和.git目录中的文件 (实际上findTsFiles已经过滤了)
+            let tsFiles = tsFilePaths.map(file => path.relative(repoPath, file));
             
-            console.log(`在仓库 ${repository} 中找到 ${tsFiles.length} 个有效ts文件（排除node_modules和.git目录）`);
+            console.log(`在仓库 ${repository} 中找到 ${tsFiles.length} 个有效ts文件`);
             
             // 收集所有可能的前缀，用于调试
             const prefixes = new Set<string>();

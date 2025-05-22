@@ -34,7 +34,7 @@ const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
  fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
 */
 // 获取所有项目名
-console.log('开始获取 Transifex 项目列表...');
+console.log('测试。。。。。。。。。开始获取 Transifex 项目列表...');
 const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
 console.log(`成功获取 ${transifexProjects.length} 个项目`);
 fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
