@@ -253,6 +253,13 @@ async function main() {
     if (transifexFilesToUpload.length > 0) {
         console.log(`\n===== 步骤3：上传 ${transifexFilesToUpload.length} 个翻译文件到Transifex =====`);
         
+        // TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+        // 临时屏蔽上传翻译文件到Transifex平台功能
+        console.log(`\n[已屏蔽] 上传翻译文件到Transifex平台的功能已临时关闭`);
+        console.log(`共有 ${transifexFilesToUpload.length} 个翻译文件未上传到Transifex平台`);
+        
+        // 如需重新启用此功能，请删除此注释块并取消下方代码的注释
+        /*
         // 添加10秒延迟，避免Transifex API限流
         console.log(`\n[上传延迟] 等待10秒后开始上传文件到Transifex...`);
         const delayStart = new Date();
@@ -291,6 +298,7 @@ async function main() {
         console.log(`总计上传: ${transifexFilesToUpload.length} 个文件`);
         console.log(`上传成功: ${successCount} 个文件`);
         console.log(`上传失败: ${failCount} 个文件`);
+        */
     }
     
     console.log(`\n翻译任务完成，其中：`);
