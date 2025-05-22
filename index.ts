@@ -257,12 +257,18 @@ async function main() {
         
         // 输出上传统计
         console.log(`\n===== 上传统计 =====`);
-        console.log(`总计处理: ${transifexFilesToUpload.length} 个文件`);
-        console.log(`成功: ${successCount} 个文件`);
-        console.log(`失败: ${failCount} 个文件`);
+        console.log(`总计上传: ${transifexFilesToUpload.length} 个文件`);
+        console.log(`上传成功: ${successCount} 个文件`);
+        console.log(`上传失败: ${failCount} 个文件`);
     }
     
-    console.log(`\n翻译任务完成，成功翻译 ${translatedFiles.size} 个文件`);
+    console.log(`\n翻译任务完成，其中：`);
+    console.log(`- AI翻译完成: ${translatedFiles.size} 个文件`);
+    
+    // 获取繁体中文处理数量
+    const tcFilesCount = transifexFilesToUpload.length - translatedFiles.size;
+    console.log(`- 繁体转换完成: ${tcFilesCount} 个文件`);
+    console.log(`- 总计处理完成: ${translatedFiles.size + tcFilesCount} 个文件`);
 }
 
 /**
