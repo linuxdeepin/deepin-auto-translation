@@ -337,13 +337,28 @@ async function processTraditionalChineseFiles(
     const { execSync } = require('child_process');
     
     // 获取工具的绝对路径
-    const utilsPath = path.resolve(process.cwd(), './deepin-translation-utils');
+    const utilsPath = process.env.TRANSLATION_UTILS_PATH || path.resolve(process.cwd(), './deepin-translation-utils');
     console.log(`[繁体处理] deepin-translation-utils工具的绝对路径: ${utilsPath}`);
     
     // 检查工具是否存在
     if (!fs.existsSync(utilsPath)) {
         console.error(`[繁体处理错误] deepin-translation-utils工具不存在于路径 ${utilsPath}`);
+        console.error('[繁体处理错误] 请确保工具文件存在，或通过 TRANSLATION_UTILS_PATH 环境变量指定正确的路径');
         return processedFiles;
+    }
+    
+    // 添加诊断信息
+    try {
+        console.log('[繁体处理诊断] 检查文件权限和类型:');
+        const fileStats = fs.statSync(utilsPath);
+        console.log(`[繁体处理诊断] 文件权限: ${fileStats.mode.toString(8)}`);
+        console.log(`[繁体处理诊断] 文件大小: ${fileStats.size} 字节`);
+        const fileTypeOutput = execSync(`file "${utilsPath}"`, { encoding: 'utf8' });
+        console.log(`[繁体处理诊断] 文件类型: ${fileTypeOutput.trim()}`);
+        const lddOutput = execSync(`ldd "${utilsPath}"`, { encoding: 'utf8' });
+        console.log(`[繁体处理诊断] 依赖库:\n${lddOutput}`);
+    } catch (error) {
+        console.error('[繁体处理诊断] 执行诊断命令时出错:', error);
     }
     
     // 检查工具是否有执行权限并添加权限
@@ -448,8 +463,9 @@ async function processTraditionalChineseFiles(
                     // 使用转义引号确保路径正确处理
                     const escapedZhCNFilePath = zhCNFilePath.replace(/"/g, '\\"');
                     
-                    // 构建绝对路径的命令 - 使用带-t参数的特定命令独立处理每种语言
-                    const command = `"${utilsPath}" zhconv -t ${langCode} "${escapedZhCNFilePath}"`;
+                    // 使用相对路径的命令，不再依赖绝对路径
+                    // 而是直接使用当前目录下的工具
+                    const command = `./deepin-translation-utils zhconv -t ${langCode} "${escapedZhCNFilePath}"`;
                     console.log(`[繁体处理] ${fileProgress} 开始生成${langCode}文件`);
                     console.log(`[繁体处理] ${fileProgress} 执行命令: ${command}`);
                     
