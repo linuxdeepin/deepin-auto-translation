@@ -124,6 +124,22 @@ function hasUnfinishedTranslations(fileContent: string): boolean {
 }
 
 /**
+ * 安全执行shell命令，处理可能的错误
+ * @param command 要执行的命令
+ * @param defaultValue 命令失败时返回的默认值
+ * @returns 命令的输出或默认值
+ */
+function safeExecSync(command: string, defaultValue: string = ""): string {
+    try {
+        return execSync(command, { encoding: 'utf8' });
+    } catch (error) {
+        // 检查是否仅仅是find命令没有找到匹配项
+        console.log(`执行命令 "${command}" 时出现错误，返回默认值`);
+        return defaultValue;
+    }
+}
+
+/**
  * 处理所有仓库中的 ts 文件，不依赖git检测
  * 
  * 功能说明：
@@ -179,29 +195,23 @@ export async function processAllTsFiles() {
             
             // 查找所有ts文件
             let tsFiles: string[] = [];
-            try {
-                // 使用命令行工具查找所有ts文件
-                const findCommand = `find ${repoPath} -name "*.ts" -type f | grep -v "node_modules" | grep -v ".git"`;
-                const output = execSync(findCommand, { encoding: 'utf8' });
-                
-                if (output.trim()) {
-                    tsFiles = output.trim().split('\n').map(file => {
-                        // 转换为相对于仓库的路径
-                        const relativePath = file.replace(`${repoPath}/`, '');
-                        return relativePath;
-                    });
-                }
-            } catch (error) {
-                console.error(`在仓库 ${repository} 中查找ts文件时出错:`, error);
-                continue;
-            }
             
-            if (tsFiles.length === 0) {
+            // 使用安全的方式执行find命令
+            const findCommand = `find ${repoPath} -name "*.ts" -type f | grep -v "node_modules" | grep -v ".git"`;
+            console.log(`执行命令: ${findCommand}`);
+            const output = safeExecSync(findCommand, "");
+            
+            if (output.trim()) {
+                tsFiles = output.trim().split('\n').map(file => {
+                    // 转换为相对于仓库的路径
+                    const relativePath = file.replace(`${repoPath}/`, '');
+                    return relativePath;
+                });
+                console.log(`在仓库 ${repository} 中找到 ${tsFiles.length} 个ts文件`);
+            } else {
                 console.log(`仓库 ${repository} 中没有找到ts文件`);
                 continue;
             }
-            
-            console.log(`在仓库 ${repository} 中找到 ${tsFiles.length} 个ts文件`);
             
             // 筛选符合条件的ts文件
             const matchingTsFiles = tsFiles.filter(file => {
@@ -220,6 +230,11 @@ export async function processAllTsFiles() {
                 
                 // 检查文件是否存在未翻译内容
                 try {
+                    if (!fs.existsSync(fullPath)) {
+                        console.log(`  - ${tsFile} (文件不存在，跳过)`);
+                        continue;
+                    }
+                    
                     const fileContent = fs.readFileSync(fullPath, 'utf8');
                     const needsTranslation = hasUnfinishedTranslations(fileContent);
                     
