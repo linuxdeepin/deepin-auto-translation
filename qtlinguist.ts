@@ -30,6 +30,11 @@ export function createTsFileFromTemplate(targetLanguageCode: string, templateFil
         
         // 检查文件是否成功创建
         if (fs.existsSync(targetFilePath)) {
+            // 确保创建的文件使用UTF-8编码
+            const content = fs.readFileSync(targetFilePath, 'utf8');
+            fs.writeFileSync(targetFilePath, content, { encoding: 'utf8' });
+            
+            console.log(`成功创建并确保UTF-8编码: ${targetFilePath}`);
             return targetFilePath;
         }
         return null;
@@ -60,15 +65,16 @@ export function extractStringsFromDocument(doc: Document) : MessageData[]
             let comment : string | null = commentElements.length > 0 ? commentElements[0].textContent : null;
             // <translation>
             let translationElement = messageElement.getElementsByTagName('translation')[0];
-            // skip if translation is not unfinished
-            if (translationElement.getAttribute('type') !== 'unfinished') {
+            
+            // 严格检查条件: 只处理标记为"unfinished"且内容为空的翻译
+            const isUnfinished = translationElement.getAttribute('type') === 'unfinished';
+            const isEmpty = !translationElement.textContent || translationElement.textContent.trim() === '';
+            
+            // 跳过已有内容的翻译，即使它们被标记为unfinished
+            if (!isUnfinished || !isEmpty) {
                 continue;
             }
-            // skip if translation is already filled
-            const messageTranslation = translationElement.textContent!.trim();
-            if (messageTranslation.length !== 0) {
-                continue;
-            }
+            
             const messageData : MessageData = {
                 'translationElement': translationElement,
                 'context': nameElement.textContent!,

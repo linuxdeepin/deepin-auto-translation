@@ -19,7 +19,10 @@ import * as Transifex from './transifex';
  */
 export async function translateLinguistTsFile(translator: TranslationOperation, inputFilePath: string, languageHint: string = '', keepUnfinishedTypeAttr : boolean = true) : Promise<number>
 {
-    const inputFileContents = fs.readFileSync(inputFilePath, 'utf8');
+    // 使用二进制方式读取文件，避免编码问题
+    const inputFileBuffer = fs.readFileSync(inputFilePath);
+    const inputFileContents = inputFileBuffer.toString('utf8');
+    
     const doc = new DOMParser().parseFromString(inputFileContents, 'application/xml');
     // <TS language="ar" version="2.1">
     const tsElement = doc.getElementsByTagName('TS')[0];
@@ -40,6 +43,12 @@ export async function translateLinguistTsFile(translator: TranslationOperation, 
 
     let translationQueue = QtLinguist.extractStringsFromDocument(doc);
     console.log(`Extracted ${translationQueue.length} untranslated strings from file: ${inputFilePath}`)
+    
+    if (translationQueue.length === 0) {
+        console.log(`No untranslated strings found in ${inputFilePath}, skipped...`);
+        return 0;
+    }
+    
     // split translationQueue into batches, each batch contains 10 messages
     const batchSize = 10;
     for (let i = 0; i < translationQueue.length; i += batchSize) {
@@ -47,9 +56,13 @@ export async function translateLinguistTsFile(translator: TranslationOperation, 
         await translator(batch, targetLanguage, keepUnfinishedTypeAttr);
         // 添加5秒延迟，让翻译更稳定
         await new Promise(resolve => setTimeout(resolve, 5000));
-        fs.writeFileSync(inputFilePath, new XMLSerializer().serializeToString(doc));
     }
-
+    
+    // 使用与原文件相同的编码写回
+    const serializedXml = new XMLSerializer().serializeToString(doc);
+    fs.writeFileSync(inputFilePath, serializedXml, { encoding: 'utf8' });
+    
+    console.log(`Finished translating ${translationQueue.length} strings in ${inputFilePath}`);
     return translationQueue.length;
 }
 

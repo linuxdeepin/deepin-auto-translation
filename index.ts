@@ -53,29 +53,8 @@ const zhCNFilePaths = new Map<string, string>();
 
 // 在开始翻译前添加编码转换检查
 async function ensureFileEncoding(filePath: string) {
-    try {
-        // 读取文件内容
-        let content = fs.readFileSync(filePath, 'utf8');
-        
-        // 检查是否包含替换字符
-        if (content.includes('')) {
-            //console.log(`[警告] 文件 ${filePath} 包含Unicode替换字符，尝试修复编码问题...`);
-            
-            // 尝试使用不同编码重新读取
-            try {
-                // 这里我们假设原文件可能是latin1编码
-                content = fs.readFileSync(filePath, 'latin1');
-                
-                // 重新写入为UTF-8
-                fs.writeFileSync(filePath, content, 'utf8');
-              //  console.log(`[修复] 已将文件 ${filePath} 转换为UTF-8编码`);
-            } catch (encodeError) {
-                console.error(`[错误] 修复文件 ${filePath} 编码失败:`, encodeError);
-            }
-        }
-    } catch (error) {
-        console.error(`[错误] 检查文件 ${filePath} 编码时出错:`, error);
-    }
+    // 此函数不再使用，保留空实现以避免破坏现有代码引用
+    console.log(`[不再使用] 跳过文件编码检查: ${filePath}`);
 }
 
 // 直接调用Translator进行翻译，跳过Transifex上传操作
@@ -89,11 +68,9 @@ async function translateTsFile(filePath: string, langCode: string): Promise<bool
             return false;
         }
         
-        // 检查文件编码
-        await ensureFileEncoding(filePath);
-        
-        // 读取文件内容
-        const fileContent = fs.readFileSync(filePath, 'utf8');
+        // 使用二进制方式读取文件，避免编码问题
+        const fileBuffer = fs.readFileSync(filePath);
+        const fileContent = fileBuffer.toString('utf8');
         
         // 检查文件中是否包含未翻译内容
         const hasUnfinishedTranslations = fileContent.includes('<translation type="unfinished"/>') || 
