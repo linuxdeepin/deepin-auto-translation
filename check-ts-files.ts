@@ -60,9 +60,18 @@ function syncTranslationsFromTransifex(repository: string, repoPath: string) {
 
 /**
  * 处理ts文件，根据语种类型添加到对应列表
+ * 
+ * @param tsFile 翻译文件路径
+ * @param langCode 已提取的语言代码
+ * @param resource Transifex资源
+ * @param repoPath 仓库路径
+ * @param processedFiles 已处理文件集合
+ * @param filesToTranslate 待翻译文件列表
+ * @returns 是否成功处理
  */
 function processTsFile(
     tsFile: string, 
+    langCode: string,
     resource: any, 
     repoPath: string, 
     processedFiles: Set<string>,
@@ -74,15 +83,6 @@ function processTsFile(
     }
     processedFiles.add(tsFile);
     
-    // 从文件名中提取语种代码，支持带路径的文件名
-    const match = tsFile.match(/[^/]+_([a-z]{2}(?:_[A-Z]{2})?).ts$/);
-    if (!match) {
-        console.log(`  - ${tsFile} (不符合命名规范，跳过)`);
-        return false;
-    }
-    
-    const langCode = match[1];
-
     // 检查是否为繁体中文
     if (['zh_HK', 'zh_TW'].includes(langCode)) {
         console.log(`  - ${tsFile} (当前文件为简繁体转换文件，采用规则库匹配方式处理)`);
@@ -140,6 +140,23 @@ function safeExecSync(command: string, defaultValue: string = ""): string {
 }
 
 /**
+ * 从文件名中提取语言代码
+ * 支持多种命名格式，如：
+ * - project_zh_CN.ts
+ * - translation_zh_CN.ts
+ * - 任何前缀_zh_CN.ts
+ * 
+ * @param filename 文件名
+ * @returns 语言代码或null（如果不匹配）
+ */
+function extractLanguageCode(filename: string): string | null {
+    // 使用更通用的正则表达式匹配任何前缀后跟下划线和语言代码的模式
+    const match = filename.match(/.*_([a-z]{2}(?:_[A-Z]{2})?)\.ts$/);
+    if (!match) return null;
+    return match[1];
+}
+
+/**
  * 处理所有仓库中的 ts 文件，不依赖git检测
  * 
  * 功能说明：
@@ -170,7 +187,7 @@ export async function processAllTsFiles() {
             .filter(line => line.trim().length > 0)
             .map(line => line.trim());
             
-        console.log(`从脚本根目录的language.yml中读取到${languageCodes.length}种语言`);
+        console.log(`从脚本根目录的language.yml中读取到${languageCodes.length}种语言: ${languageCodes.join(', ')}`);
         
         // 从 YAML 文件中读取所有项目信息
         const allResources = await loadAllResources();
@@ -188,67 +205,102 @@ export async function processAllTsFiles() {
                 continue;
             }
 
-            console.log(`检查仓库 ${repository}`);
+            console.log(`\n========== 开始检查仓库 ${repository} ==========`);
+            console.log(`仓库路径: ${repoPath}`);
+            console.log(`检查目录是否存在: ${fs.existsSync(repoPath)}`);
+            
+            // 检查目录内容
+            const lsOutput = safeExecSync(`ls -la ${repoPath}`, "目录为空或无法访问");
+            console.log(`目录内容列表:\n${lsOutput}`);
             
             // 从Transifex同步翻译文件
             syncTranslationsFromTransifex(repository, repoPath);
             
-            // 查找所有ts文件
-            let tsFiles: string[] = [];
+            // 查找所有ts文件 - 分步骤执行以便更好地调试
+            console.log(`开始查找ts文件...`);
             
-            // 使用安全的方式执行find命令
-            const findCommand = `find ${repoPath} -name "*.ts" -type f | grep -v "node_modules" | grep -v ".git"`;
-            console.log(`执行命令: ${findCommand}`);
-            const output = safeExecSync(findCommand, "");
+            // 步骤1: 只用find找ts文件，不用grep过滤
+            const findCmd = `find ${repoPath} -name "*.ts" -type f`;
+            console.log(`执行命令: ${findCmd}`);
+            const allTsFiles = safeExecSync(findCmd, "");
             
-            if (output.trim()) {
-                tsFiles = output.trim().split('\n').map(file => {
-                    // 转换为相对于仓库的路径
-                    const relativePath = file.replace(`${repoPath}/`, '');
-                    return relativePath;
-                });
-                console.log(`在仓库 ${repository} 中找到 ${tsFiles.length} 个ts文件`);
-            } else {
-                console.log(`仓库 ${repository} 中没有找到ts文件`);
+            if (!allTsFiles.trim()) {
+                console.log(`仓库 ${repository} 中没有找到任何ts文件`);
                 continue;
             }
             
-            // 筛选符合条件的ts文件
-            const matchingTsFiles = tsFiles.filter(file => {
-                const match = file.match(/_([a-z]{2}(?:_[A-Z]{2})?).ts$/);
-                if (!match) return false;
-                
-                const langCode = match[1];
-                return languageCodes.includes(langCode);
+            // 步骤2: 在JavaScript中过滤掉node_modules和.git目录中的文件
+            let tsFiles = allTsFiles.trim().split('\n')
+                .filter(file => !file.includes('node_modules') && !file.includes('.git'))
+                .map(file => file.replace(`${repoPath}/`, ''));
+            
+            console.log(`在仓库 ${repository} 中找到 ${tsFiles.length} 个有效ts文件（排除node_modules和.git目录）`);
+            
+            // 收集所有可能的前缀，用于调试
+            const prefixes = new Set<string>();
+            
+            // 分析所有文件名模式
+            tsFiles.forEach(file => {
+                const basename = path.basename(file);
+                const match = basename.match(/(.+)_[a-z]{2}(?:_[A-Z]{2})?\.ts$/);
+                if (match) {
+                    prefixes.add(match[1]);
+                }
             });
             
-            console.log(`其中 ${matchingTsFiles.length} 个文件匹配language.yml中的语言`);
+            console.log(`检测到的可能前缀: ${Array.from(prefixes).join(', ') || '无'}`);
+            
+            // 筛选符合条件的ts文件 - 使用更通用的匹配模式，适应不同的前缀命名
+            const matchingTsFiles: { file: string; langCode: string }[] = [];
+            
+            for (const file of tsFiles) {
+                const basename = path.basename(file);
+                const langCode = extractLanguageCode(basename);
+                
+                if (!langCode) {
+                    console.log(`  跳过文件 ${file} - 不符合命名格式要求`);
+                    continue;
+                }
+                
+                if (!languageCodes.includes(langCode)) {
+                    console.log(`  跳过文件 ${file} - 语言代码 ${langCode} 不在language.yml中`);
+                    continue;
+                }
+                
+                matchingTsFiles.push({ file, langCode });
+            }
+            
+            console.log(`找到 ${matchingTsFiles.length} 个匹配language.yml中语言的文件`);
             
             // 处理每个匹配的ts文件
-            for (const tsFile of matchingTsFiles) {
+            for (const { file: tsFile, langCode } of matchingTsFiles) {
                 const fullPath = path.join(repoPath, tsFile);
+                console.log(`\n处理文件: ${tsFile} (语言: ${langCode})`);
                 
                 // 检查文件是否存在未翻译内容
                 try {
                     if (!fs.existsSync(fullPath)) {
-                        console.log(`  - ${tsFile} (文件不存在，跳过)`);
+                        console.log(`  - 文件不存在，跳过`);
                         continue;
                     }
                     
                     const fileContent = fs.readFileSync(fullPath, 'utf8');
-                    const needsTranslation = hasUnfinishedTranslations(fileContent);
+                    // 检查文件内容是否包含未翻译标记
+                    const hasUnfinished = hasUnfinishedTranslations(fileContent);
                     
-                    if (!needsTranslation) {
-                        console.log(`  - ${tsFile} (没有未翻译内容，跳过)`);
+                    if (!hasUnfinished) {
+                        console.log(`  - 没有未翻译内容，跳过`);
                         continue;
                     }
+                    
+                    console.log(`  - 检测到未翻译内容，开始处理`);
                 } catch (error) {
-                    console.error(`读取文件 ${fullPath} 时出错:`, error);
+                    console.error(`  - 读取文件时出错:`, error);
                     continue;
                 }
                 
                 // 处理ts文件
-                if (processTsFile(tsFile, resource, repoPath, processedFiles, filesToTranslate)) {
+                if (processTsFile(tsFile, langCode, resource, repoPath, processedFiles, filesToTranslate)) {
                     totalFilesFound++;
                 }
             }
@@ -262,10 +314,18 @@ export async function processAllTsFiles() {
             // 计算小语种文件数量(不需要处理的文件)
             const skipFilesCount = totalFilesFound - filesToTranslate.length;
             
-            console.log(`\n共找到 ${totalFilesFound} 个需要处理的翻译文件，其中：`);
+            console.log(`\n========== 统计信息 ==========`);
+            console.log(`共找到 ${totalFilesFound} 个需要处理的翻译文件，其中：`);
             console.log(`  - ${filesToTranslate.length - traditionalFilesCount} 个需要AI翻译`);
             console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理`);
             console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理`);
+            
+            // 输出所有待翻译的文件
+            console.log(`\n========== 待翻译文件列表 ==========`);
+            filesToTranslate.forEach((item, index) => {
+                const type = item.isTraditionalChinese ? "繁体中文" : "AI翻译";
+                console.log(`${index+1}. ${item.file} (${item.langCode}) - ${type}`);
+            });
         } else {
             console.log('\n没有找到任何需要处理的翻译文件');
         }
