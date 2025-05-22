@@ -11,8 +11,7 @@ import * as Doubao from './doubao';
 import { MessageData, TransifexRepo, TransifexResource } from './types';
 import { exit } from 'node:process';
 import * as Translator from './translator';
-import { checkTsFilesInGitLog, checkEnTsFilesWithTransfix } from './check-ts-files';
-import { execSync } from 'child_process';
+import { processAllTsFiles } from './check-ts-files';
 import path from 'path';
 
 // 选择翻译服务
@@ -34,19 +33,20 @@ const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
  );
  fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
 */
+// 获取所有项目名
+console.log('开始获取 Transifex 项目列表...');
+const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
+console.log(`成功获取 ${transifexProjects.length} 个项目`);
+fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
 
- // 需要获取所有项目名后，再挑选需要的项目
- const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
- // 把项目写到transifex-projects.yml文件中,方便后续读取
- fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
- const allResources = await Transifex.getAllLinkedResourcesFromProjects(YAML.load(fs.readFileSync('./transifex-projects.yml', 'utf8')) as string[]);
- 
- // 过滤资源，只保留peeweep-test组织的仓库
- const filteredResources = allResources.filter(resource => resource.repository.startsWith('peeweep-test/'));
- console.log(`过滤前资源数量: ${allResources.length}, 过滤后: ${filteredResources.length}`);
- 
- // 拉取代码
- GitRepo.ensureLocalReposExist(filteredResources);
+console.log('开始获取项目关联资源...');
+const allResources = await Transifex.getAllLinkedResourcesFromProjects(YAML.load(fs.readFileSync('./transifex-projects.yml', 'utf8')) as string[]);
+console.log(`成功获取 ${allResources.length} 个资源`);
+
+console.log('开始克隆/更新本地仓库...');
+GitRepo.ensureLocalReposExist(allResources);
+console.log('本地仓库准备完成');
+
 
 // 记录简体中文文件路径，用于后续处理繁体中文
 const zhCNFilePaths = new Map<string, string>();
@@ -93,22 +93,12 @@ async function translateTsFile(filePath: string, langCode: string): Promise<bool
     }
 }
 
-// 检查最新的 git log 中的 ts 文件并进行翻译
+// 主函数，直接处理翻译文件，无需git检测
 async function main() {
     console.log('开始检查并处理翻译文件...');
     
-    // 首先尝试检查包含"transfix"的提交中的_en.ts文件
-    console.log('尝试检查包含"transfix"的提交中的_en.ts文件...');
-    const { filesToTranslate: transfixFiles, foundTransfixCommit, totalFilesFound } = await checkEnTsFilesWithTransfix();
-
-    // 修改判断逻辑：只有当没有找到包含"transfix"的提交时，才使用常规方法
-    let filesToTranslate = transfixFiles;
-    if (!foundTransfixCommit) {
-        console.log('没有找到包含"transfix"的提交中的_en.ts文件，尝试使用常规方法检查...');
-        filesToTranslate = await checkTsFilesInGitLog();
-    } else {
-        console.log(`开始处理翻译文件...`);
-    }
+    // 直接处理所有ts文件，不需要git检测
+    const filesToTranslate = await processAllTsFiles();
 
     if (filesToTranslate.length === 0) {
         console.log('没有需要翻译的文件');
@@ -117,8 +107,8 @@ async function main() {
 
     console.log(`\n开始处理 ${filesToTranslate.length} 个需要翻译的文件`);
     
-    // 记录成功翻译的文件和它们的仓库路径
-    const translatedFiles = new Map<string, Set<string>>();
+    // 记录成功翻译的文件
+    const translatedFiles = new Set<string>();
     
     // 将文件分为两类：繁体中文和非繁体中文
     const traditionalFiles = filesToTranslate.filter(item => 
@@ -162,10 +152,7 @@ async function main() {
                 }
                 
                 // 记录成功翻译的文件
-                if (!translatedFiles.has(repoPath)) {
-                    translatedFiles.set(repoPath, new Set());
-                }
-                translatedFiles.get(repoPath)?.add(file);
+                translatedFiles.add(fullPath);
                 
                 // 添加到待上传列表
                 transifexFilesToUpload.push({
@@ -225,7 +212,7 @@ async function main() {
     // 使用 deepin-translation-utils 处理繁体中文文件
     if (tcFileMap.size > 0) {
         console.log('\n开始使用 deepin-translation-utils 处理繁体中文文件...');
-        const tcFilesResult = await processTraditionalChineseFiles(tcFileMap, translatedFiles);
+        const tcFilesResult = await processTraditionalChineseFiles(tcFileMap);
         
         // 添加繁体中文文件到待上传列表
         for (const { filePath, langCode, resource } of tcFilesResult) {
@@ -257,22 +244,16 @@ async function main() {
         }
     }
     
-    // 将所有翻译好的文件提交到 Git 仓库
-    if (translatedFiles.size > 0) {
-        console.log(`\n===== 步骤4：将 ${Array.from(translatedFiles.values()).reduce((acc, files) => acc + files.size, 0)} 个翻译文件提交到Git =====`);
-        commitTranslatedFiles(translatedFiles);
-    }
+    console.log(`\n翻译任务完成，成功翻译 ${translatedFiles.size} 个文件`);
 }
 
 /**
  * 使用 deepin-translation-utils 处理繁体中文文件
  * @param tcFileMap 繁体中文文件映射：仓库路径 -> (基本文件名 -> 语言代码)
- * @param translatedFiles 记录翻译文件的Map
  * @returns 处理成功的繁体中文文件信息数组
  */
 async function processTraditionalChineseFiles(
-    tcFileMap: Map<string, Map<string, string>>,
-    translatedFiles: Map<string, Set<string>>
+    tcFileMap: Map<string, Map<string, string>>
 ): Promise<{ filePath: string; langCode: string; resource: any }[]> {
     const processedFiles: { filePath: string; langCode: string; resource: any }[] = [];
     
@@ -322,24 +303,12 @@ async function processTraditionalChineseFiles(
                 const command = `./deepin-translation-utils zhconv --target-languages ${langCode} ${zhCNFilePath}`;
                 console.log(`执行命令: ${command}`);
                 try {
+                    const { execSync } = require('child_process');
                     execSync(command, { encoding: 'utf8', stdio: 'inherit' });
                 } catch (error) {
                     console.error(`执行 deepin-translation-utils 命令失败 (${baseFileName}, ${langCode}):`, error);
                     continue;
                 }
-                
-                // 记录生成的文件，以便后续进行 Git 提交
-                if (!translatedFiles.has(repoPath)) {
-                    translatedFiles.set(repoPath, new Set());
-                }
-                
-                // 提取相对路径而不仅仅是文件名
-                const repoPrefix = `${repoPath}/`;
-                const targetRelativePath = targetFilePath.startsWith(repoPrefix) 
-                    ? targetFilePath.substring(repoPrefix.length) 
-                    : targetFilePath;
-                
-                translatedFiles.get(repoPath)?.add(targetRelativePath);
                 
                 // 添加到处理成功的文件列表
                 // 查找匹配的resource
@@ -360,29 +329,6 @@ async function processTraditionalChineseFiles(
     }
     
     return processedFiles;
-}
-
-/**
- * 将翻译后的文件通过 git 添加到当前提交
- * @param translatedFiles 翻译文件映射：仓库路径 -> 文件集合
- */
-function commitTranslatedFiles(translatedFiles: Map<string, Set<string>>): void {
-    for (const [repoPath, files] of translatedFiles.entries()) {
-        try {
-            console.log(`\n处理仓库 ${repoPath} 中的翻译文件...`);
-            const fileList = Array.from(files).join('" "');
-            
-            // 执行 git add 和 git commit --amend
-            try {
-                execSync(`cd ${repoPath} && git add "${fileList}" && git commit --amend --no-edit`, { encoding: 'utf8' });
-                console.log(`成功将 ${files.size} 个文件添加到 ${repoPath} 的当前提交`);
-            } catch (error) {
-                console.error(`Git 命令执行失败 (${repoPath}): ${error}`);
-            }
-        } catch (error) {
-            console.error(`Git 操作失败 (${repoPath}): ${error}`);
-        }
-    }
 }
 
 // 执行主函数
