@@ -321,17 +321,14 @@ async function processTraditionalChineseFiles(
     const processedFiles: { filePath: string; langCode: string; resource: any }[] = [];
     const { execSync } = require('child_process');
     
-    // 获取工具的绝对路径
-    const utilsPath = process.env.TRANSLATION_UTILS_PATH || path.resolve(process.cwd(), './deepin-translation-utils');
-    console.log(`[繁体处理] deepin-translation-utils工具的绝对路径: ${utilsPath}`);
-    
     // 检查工具是否存在
+    const utilsPath = process.env.TRANSLATION_UTILS_PATH || path.resolve(process.cwd(), './deepin-translation-utils');
     if (!fs.existsSync(utilsPath)) {
         console.error(`[繁体处理错误] deepin-translation-utils工具不存在于路径 ${utilsPath}`);
         console.error('[繁体处理错误] 请确保工具文件存在，或通过 TRANSLATION_UTILS_PATH 环境变量指定正确的路径');
         return processedFiles;
     }
-    
+    console.log(`[繁体处理] deepin-translation-utils工具的绝对路径: ${utilsPath}`);
     // 添加诊断信息
     try {
         console.log('[繁体处理诊断] 检查文件权限和类型:');
