@@ -34,7 +34,7 @@ const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
  fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
 */
 // 获取所有项目名
-console.log('测试~~~~开始获取 Transifex 项目列表...');
+console.log('测试222~~~~开始获取 Transifex 项目列表...');
 const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
 console.log(`成功获取 ${transifexProjects.length} 个项目`);
 fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
@@ -331,16 +331,14 @@ async function processTraditionalChineseFiles(
     console.log(`[繁体处理] deepin-translation-utils工具的绝对路径: ${utilsPath}`);
     // 添加诊断信息
     try {
-        console.log('[繁体处理诊断] 检查文件权限和类型:');
+        console.log('[繁体处理诊断] 检查文件信息:');
         const fileStats = fs.statSync(utilsPath);
         console.log(`[繁体处理诊断] 文件权限: ${fileStats.mode.toString(8)}`);
         console.log(`[繁体处理诊断] 文件大小: ${fileStats.size} 字节`);
-        const fileTypeOutput = execSync(`file "${utilsPath}"`, { encoding: 'utf8' });
-        console.log(`[繁体处理诊断] 文件类型: ${fileTypeOutput.trim()}`);
-        const lddOutput = execSync(`ldd "${utilsPath}"`, { encoding: 'utf8' });
-        console.log(`[繁体处理诊断] 依赖库:\n${lddOutput}`);
+        console.log(`[繁体处理诊断] 最后修改时间: ${fileStats.mtime}`);
+        // 不再使用file命令和ldd命令，因为CI环境中可能不存在
     } catch (error) {
-        console.error('[繁体处理诊断] 执行诊断命令时出错:', error);
+        console.error('[繁体处理诊断] 获取文件信息时出错:', error);
     }
     
     // 检查工具是否有执行权限并添加权限
@@ -478,24 +476,10 @@ async function processTraditionalChineseFiles(
                     } catch (execError) {
                         console.error(`[繁体处理错误] ${fileProgress} 执行命令失败:`, execError);
                         
-                        // 不再使用备选方案，直接记录错误并跳过
+                        // 不使用备选方案，直接记录错误并跳过
                         console.error(`[繁体处理错误] ${fileProgress} 无法使用deepin-translation-utils工具处理文件，跳过处理`);
                         errorCount++;
                         continue;
-                    }
-                    
-                    // 添加到处理成功的文件列表
-                    // 查找匹配的resource
-                    const resource = allResources.find(res => res.repository === repoPath.replace('repo/', ''));
-                    if (resource) {
-                        processedFiles.push({
-                            filePath: targetFilePath,
-                            langCode,
-                            resource
-                        });
-                        console.log(`[繁体处理] ${fileProgress} 已添加到处理成功列表: ${targetFilePath}`);
-                    } else {
-                        console.warn(`[繁体处理警告] ${fileProgress} 未找到匹配的resource: ${repoPath.replace('repo/', '')}`);
                     }
                     
                     processedCount++;
