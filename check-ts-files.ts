@@ -50,7 +50,7 @@ function syncTranslationsFromTransifex(repository: string, repoPath: string) {
             console.log(`使用tx命令从Transifex拉取${repository}的翻译文件...`);
             // 临时屏蔽tx pull功能 TTTTTTTTTTTTTTT
             Transifex.downloadTranslationFilesViaCli(repoPath);
-            console.log(`[已屏蔽] 从Transifex同步${repository}的翻译文件功能已临时关闭`);
+            //console.log(`[已屏蔽] 从Transifex同步${repository}的翻译文件功能已临时关闭`);
         } else {
             console.log(`仓库${repository}没有.tx/config配置文件，无法从Transifex同步翻译`);
         }

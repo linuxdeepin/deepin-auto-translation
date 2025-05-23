@@ -34,7 +34,7 @@ const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
  fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
 */
 // 获取所有项目名
-console.log('测试222~~~~开始获取 Transifex 项目列表...');
+console.log('开始获取 Transifex 项目列表...');
 const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
 console.log(`成功获取 ${transifexProjects.length} 个项目`);
 fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
@@ -98,216 +98,6 @@ async function translateTsFile(filePath: string, langCode: string): Promise<bool
         console.error(`翻译文件 ${filePath} 时出错:`, error);
         return false;
     }
-}
-
-// 主函数，直接处理翻译文件，无需git检测
-async function main() {
-    console.log('开始检查并处理翻译文件...');
-    
-    // 直接处理所有ts文件，不需要git检测
-    const filesToTranslate = await processAllTsFiles();
-
-    if (filesToTranslate.length === 0) {
-        console.log('没有需要翻译的文件');
-        return;
-    }
-
-    console.log(`\n开始处理 ${filesToTranslate.length} 个需要翻译的文件`);
-    
-    // 记录成功翻译的文件
-    const translatedFiles = new Set<string>();
-    
-    // 将文件分为两类：繁体中文和非繁体中文
-    const traditionalFiles = filesToTranslate.filter(item => 
-        ['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese);
-    const nonTraditionalFiles = filesToTranslate.filter(item => 
-        !(['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese));
-    
-    // 记录需要上传到Transifex的文件
-    const transifexFilesToUpload: { file: string; language: string; resource: TransifexResource }[] = [];
-    
-    // 第一步：处理所有非繁体中文文件（包括简体中文和其他语言）
-    console.log('\n===== 步骤1：处理非繁体中文文件 =====');
-    
-    // 串行处理每个翻译任务
-    console.log(`开始串行处理 ${nonTraditionalFiles.length} 个翻译文件...`);
-    let successfullyTranslatedCount = 0;
-    
-    for (const { file, langCode, resource, repoPath } of nonTraditionalFiles) {
-        if (!repoPath) {
-            console.warn(`警告: 文件 ${file} 没有关联的仓库路径，跳过处理`);
-            continue;
-        }
-        
-        const fullPath = `${repoPath}/${file}`;
-        console.log(`\n[${successfullyTranslatedCount+1}/${nonTraditionalFiles.length}] 开始翻译 ${file} (${langCode}) (仓库路径: ${repoPath})`);
-        
-        try {
-            // 直接翻译文件，不上传到Transifex
-            const translated = await translateTsFile(fullPath, langCode);
-            
-            if (translated) {
-                successfullyTranslatedCount++;
-                
-                // 如果是简体中文文件，记录路径用于后续处理繁体中文
-                if (langCode === 'zh_CN') {
-                    const baseFileName = path.basename(file).replace(/_zh_CN\.ts$/, '');
-                    zhCNFilePaths.set(baseFileName, fullPath);
-                }
-                
-                // 记录成功翻译的文件
-                translatedFiles.add(fullPath);
-                
-                // 添加到待上传列表
-                transifexFilesToUpload.push({
-                    file: fullPath,
-                    language: langCode,
-                    resource
-                });
-                
-                console.log(`翻译完成: ${file} (${langCode})`);
-            } else {
-                console.log(`文件 ${file} 无需翻译或翻译失败`);
-            }
-        } catch (error) {
-            console.error(`处理 ${file} (${langCode}) 时出错:`, error);
-        }
-    }
-    
-    console.log(`\n所有 ${nonTraditionalFiles.length} 个非繁体中文文件处理完成，成功翻译: ${successfullyTranslatedCount} 个`);
-    
-    // 第二步：收集并处理繁体中文文件
-    console.log('\n===== 步骤2：处理繁体中文文件 =====');
-    
-    // 收集繁体中文文件信息 - 改为使用数组而非Map存储，避免相同baseFileName的不同语言版本互相覆盖
-    const traditionalChineseFiles: { baseFileName: string; langCode: string; repoPath: string; resource: any }[] = [];
-    
-    for (const { file, langCode, resource, repoPath } of traditionalFiles) {
-        if (!repoPath) continue;
-        
-        console.log(`\n收集繁体中文文件信息: ${file} (${langCode})`);
-        const baseFileName = path.basename(file).replace(/_([a-z]{2}(?:_[A-Z]{2})?)\.ts$/, '');
-        
-        // 检查对应的简体中文文件是否存在
-        // 如果没有在之前的处理中找到，尝试从文件系统中查找
-        if (!zhCNFilePaths.has(baseFileName)) {
-            const possibleZhCNPath = `${repoPath}/${file.replace(/_zh_[A-Z]{2}\.ts$/, '_zh_CN.ts')}`;
-            if (fs.existsSync(possibleZhCNPath)) {
-                console.log(`找到对应的简体中文文件: ${possibleZhCNPath}`);
-                zhCNFilePaths.set(baseFileName, possibleZhCNPath);
-            } else {
-                // 再尝试在translations目录下查找
-                const altPath = `${repoPath}/translations/${baseFileName}_zh_CN.ts`;
-                if (fs.existsSync(altPath)) {
-                    console.log(`找到对应的简体中文文件: ${altPath}`);
-                    zhCNFilePaths.set(baseFileName, altPath);
-                } else {
-                    console.warn(`未找到与 ${baseFileName} 对应的简体中文文件，无法处理繁体中文`);
-                    continue;
-                }
-            }
-        }
-        
-        // 添加到繁体中文文件数组
-        traditionalChineseFiles.push({
-            baseFileName,
-            langCode,
-            repoPath,
-            resource
-        });
-    }
-    
-    // 使用 deepin-translation-utils 处理繁体中文文件
-    if (traditionalChineseFiles.length > 0) {
-        console.log(`\n开始使用 deepin-translation-utils 处理繁体中文文件...共有 ${traditionalChineseFiles.length} 个文件需要处理`);
-        
-        // 按仓库分组，方便后续处理
-        const repoGroups = new Map<string, { baseFileName: string; langCode: string; resource: any }[]>();
-        
-        for (const file of traditionalChineseFiles) {
-            if (!repoGroups.has(file.repoPath)) {
-                repoGroups.set(file.repoPath, []);
-            }
-            repoGroups.get(file.repoPath)?.push({
-                baseFileName: file.baseFileName,
-                langCode: file.langCode,
-                resource: file.resource
-            });
-        }
-        
-        const tcFilesResult = await processTraditionalChineseFiles(repoGroups);
-        
-        // 添加繁体中文文件到待上传列表
-        for (const { filePath, langCode, resource } of tcFilesResult) {
-            transifexFilesToUpload.push({
-                file: filePath,
-                language: langCode,
-                resource
-            });
-        }
-    } else {
-        console.log('\n没有需要处理的繁体中文文件');
-    }
-    
-    // 第三步：统一上传所有文件到Transifex
-    if (transifexFilesToUpload.length > 0) {
-        console.log(`\n===== 步骤3：上传 ${transifexFilesToUpload.length} 个翻译文件到Transifex =====`);
-        
-        // TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
-        // 临时屏蔽上传翻译文件到Transifex平台功能
-        console.log(`\n[已屏蔽] 上传翻译文件到Transifex平台的功能已临时关闭`);
-        console.log(`共有 ${transifexFilesToUpload.length} 个翻译文件未上传到Transifex平台`);
-        
-        // 如需重新启用此功能，请删除此注释块并取消下方代码的注释
-        /*
-        // 添加10秒延迟，避免Transifex API限流
-        console.log(`\n[上传延迟] 等待10秒后开始上传文件到Transifex...`);
-        const delayStart = new Date();
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        const delayEnd = new Date();
-        const actualDelay = (delayEnd.getTime() - delayStart.getTime()) / 1000;
-        console.log(`[上传延迟] 延迟完成，实际等待了 ${actualDelay.toFixed(1)} 秒，开始上传文件`);
-        
-        let successCount = 0;
-        let skipCount = 0;
-        let failCount = 0;
-        
-        for (let i = 0; i < transifexFilesToUpload.length; i++) {
-            const { file, language, resource } = transifexFilesToUpload[i];
-            console.log(`\n[${i+1}/${transifexFilesToUpload.length}] 上传文件到Transifex: ${file} (${language})`);
-            
-            try {
-                // 使用Transifex模块的uploadTranslation方法上传，处理返回结果
-                const result = await Transifex.uploadTranslatedFileToTransifex(language, file, resource.transifexResourceId);
-                
-                if (result === true) {
-                    successCount++;
-                    console.log(`文件 ${file} 处理完成`);
-                } else {
-                    failCount++;
-                    console.error(`文件 ${file} 上传失败`);
-                }
-            } catch (error) {
-                failCount++;
-                console.error(`上传文件 ${file} 到Transifex时发生异常:`, error);
-            }
-        }
-        
-        // 输出上传统计
-        console.log(`\n===== 上传统计 =====`);
-        console.log(`总计上传: ${transifexFilesToUpload.length} 个文件`);
-        console.log(`上传成功: ${successCount} 个文件`);
-        console.log(`上传失败: ${failCount} 个文件`);
-        */
-    }
-    
-    console.log(`\n翻译任务完成，其中：`);
-    console.log(`- AI翻译完成: ${translatedFiles.size} 个文件`);
-    
-    // 获取繁体中文处理数量
-    const tcFilesCount = transifexFilesToUpload.length - translatedFiles.size;
-    console.log(`- 繁体转换完成: ${tcFilesCount} 个文件`);
-    console.log(`- 总计处理完成: ${translatedFiles.size + tcFilesCount} 个文件`);
 }
 
 /**
@@ -485,6 +275,13 @@ async function processTraditionalChineseFiles(
                     processedCount++;
                     console.log(`[繁体处理] ${fileProgress} 繁体中文文件处理完成: ${targetFilePath}`);
                     
+                    // 添加成功处理的文件到返回列表
+                    processedFiles.push({
+                        filePath: targetFilePath,
+                        langCode: langCode,
+                        resource: resource
+                    });
+                    
                     // 添加延迟，避免CI环境中资源竞争
                     await new Promise(resolve => setTimeout(resolve, 500));
                 } catch (error) {
@@ -512,8 +309,244 @@ async function processTraditionalChineseFiles(
             console.log(`[繁体处理] ${index+1}. ${item.filePath} (${item.langCode})`);
         });
     }
+
+    // 如果有处理失败的文件，建议用户检查
+    if (errorCount > 0) {
+        console.log(`\n[繁体处理] ⚠️ 警告：有 ${errorCount} 个文件处理失败，请检查上方日志了解详细信息`);
+    }
+
+    // 如果有跳过的文件，提供说明
+    if (skipCount > 0) {
+        console.log(`\n[繁体处理] ℹ️ 提示：${skipCount} 个文件被跳过，可能是因为文件已完成翻译或找不到对应的简体中文文件`);
+    }
+
+    // 添加处理效率统计
+    const successRate = totalFiles > 0 ? ((processedCount / totalFiles) * 100).toFixed(1) : '0';
+    console.log(`\n[繁体处理] 处理成功率: ${successRate}% (${processedCount}/${totalFiles})`);
     
     return processedFiles;
+}
+
+// 主函数，直接处理翻译文件，无需git检测
+async function main() {
+    console.log('\n========== 开始翻译任务 ==========');
+    console.log('当前时间:', new Date().toLocaleString());
+    console.log('工作目录:', process.cwd());
+    
+    // 直接处理所有ts文件，不需要git检测
+    const filesToTranslate = await processAllTsFiles();
+
+    if (filesToTranslate.length === 0) {
+        console.log('\n⚠️ 没有需要翻译的文件');
+        return;
+    }
+
+    console.log(`\n✨ 开始处理 ${filesToTranslate.length} 个需要翻译的文件`);
+    
+    // 记录成功翻译的文件
+    const translatedFiles = new Set<string>();
+    
+    // 将文件分为两类：繁体中文和非繁体中文
+    const traditionalFiles = filesToTranslate.filter(item => 
+        ['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese);
+    const nonTraditionalFiles = filesToTranslate.filter(item => 
+        !(['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese));
+    
+    // 记录需要上传到Transifex的文件
+    const transifexFilesToUpload: { file: string; language: string; resource: TransifexResource }[] = [];
+    
+    // 第一步：处理所有非繁体中文文件（包括简体中文和其他语言）
+    console.log('\n===== 步骤1：处理非繁体中文文件 =====');
+    
+    // 串行处理每个翻译任务
+    console.log(`📝 开始串行处理 ${nonTraditionalFiles.length} 个翻译文件...`);
+    let successfullyTranslatedCount = 0;
+    
+    for (const { file, langCode, resource, repoPath } of nonTraditionalFiles) {
+        if (!repoPath) {
+            console.warn(`警告: 文件 ${file} 没有关联的仓库路径，跳过处理`);
+            continue;
+        }
+        
+        const fullPath = `${repoPath}/${file}`;
+        console.log(`\n[${successfullyTranslatedCount+1}/${nonTraditionalFiles.length}] 开始翻译 ${file} (${langCode}) (仓库路径: ${repoPath})`);
+        
+        try {
+            // 直接翻译文件，不上传到Transifex
+            const translated = await translateTsFile(fullPath, langCode);
+            
+            if (translated) {
+                successfullyTranslatedCount++;
+                
+                // 如果是简体中文文件，记录路径用于后续处理繁体中文
+                if (langCode === 'zh_CN') {
+                    const baseFileName = path.basename(file).replace(/_zh_CN\.ts$/, '');
+                    zhCNFilePaths.set(baseFileName, fullPath);
+                }
+                
+                // 记录成功翻译的文件
+                translatedFiles.add(fullPath);
+                
+                // 添加到待上传列表
+                transifexFilesToUpload.push({
+                    file: fullPath,
+                    language: langCode,
+                    resource
+                });
+                
+                console.log(`翻译完成: ${file} (${langCode})`);
+            } else {
+                console.log(`文件 ${file} 无需翻译或翻译失败`);
+            }
+        } catch (error) {
+            console.error(`处理 ${file} (${langCode}) 时出错:`, error);
+        }
+    }
+    
+    console.log(`\n所有 ${nonTraditionalFiles.length} 个非繁体中文文件处理完成，成功翻译: ${successfullyTranslatedCount} 个`);
+    
+    // 第二步：收集并处理繁体中文文件
+    console.log('\n===== 步骤2：处理繁体中文文件 =====');
+    
+    // 收集繁体中文文件信息 - 改为使用数组而非Map存储，避免相同baseFileName的不同语言版本互相覆盖
+    const traditionalChineseFiles: { baseFileName: string; langCode: string; repoPath: string; resource: any }[] = [];
+    
+    for (const { file, langCode, resource, repoPath } of traditionalFiles) {
+        if (!repoPath) continue;
+        
+        console.log(`\n收集繁体中文文件信息: ${file} (${langCode})`);
+        const baseFileName = path.basename(file).replace(/_([a-z]{2}(?:_[A-Z]{2})?)\.ts$/, '');
+        
+        // 检查对应的简体中文文件是否存在
+        // 如果没有在之前的处理中找到，尝试从文件系统中查找
+        if (!zhCNFilePaths.has(baseFileName)) {
+            const possibleZhCNPath = `${repoPath}/${file.replace(/_zh_[A-Z]{2}\.ts$/, '_zh_CN.ts')}`;
+            if (fs.existsSync(possibleZhCNPath)) {
+                console.log(`找到对应的简体中文文件: ${possibleZhCNPath}`);
+                zhCNFilePaths.set(baseFileName, possibleZhCNPath);
+            } else {
+                // 再尝试在translations目录下查找
+                const altPath = `${repoPath}/translations/${baseFileName}_zh_CN.ts`;
+                if (fs.existsSync(altPath)) {
+                    console.log(`找到对应的简体中文文件: ${altPath}`);
+                    zhCNFilePaths.set(baseFileName, altPath);
+                } else {
+                    console.warn(`未找到与 ${baseFileName} 对应的简体中文文件，无法处理繁体中文`);
+                    continue;
+                }
+            }
+        }
+        
+        // 添加到繁体中文文件数组
+        traditionalChineseFiles.push({
+            baseFileName,
+            langCode,
+            repoPath,
+            resource
+        });
+    }
+    
+    // 使用 deepin-translation-utils 处理繁体中文文件
+    if (traditionalChineseFiles.length > 0) {
+        console.log(`\n开始使用 deepin-translation-utils 处理繁体中文文件...共有 ${traditionalChineseFiles.length} 个文件需要处理`);
+        
+        // 按仓库分组，方便后续处理
+        const repoGroups = new Map<string, { baseFileName: string; langCode: string; resource: any }[]>();
+        
+        for (const file of traditionalChineseFiles) {
+            if (!repoGroups.has(file.repoPath)) {
+                repoGroups.set(file.repoPath, []);
+            }
+            repoGroups.get(file.repoPath)?.push({
+                baseFileName: file.baseFileName,
+                langCode: file.langCode,
+                resource: file.resource
+            });
+        }
+        
+        const tcFilesResult = await processTraditionalChineseFiles(repoGroups);
+        
+        // 添加繁体中文文件到待上传列表
+        for (const { filePath, langCode, resource } of tcFilesResult) {
+            transifexFilesToUpload.push({
+                file: filePath,
+                language: langCode,
+                resource
+            });
+        }
+    } else {
+        console.log('\n没有需要处理的繁体中文文件');
+    }
+    
+    // 第三步：统一上传所有文件到Transifex
+    if (transifexFilesToUpload.length > 0) {
+        console.log(`\n===== 步骤3：上传翻译文件到Transifex =====`);
+        console.log(`📤 准备上传 ${transifexFilesToUpload.length} 个翻译文件到Transifex平台`);
+        
+        // TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+        // 临时屏蔽上传翻译文件到Transifex平台功能
+        // console.log(`\n⚠️ [已屏蔽] 上传翻译文件到Transifex平台的功能已临时关闭`);
+        console.log(`ℹ️ 共有 ${transifexFilesToUpload.length} 个翻译文件未上传到Transifex平台`);
+        
+        // 如需重新启用此功能，请删除此注释块并取消下方代码的注释
+        
+        // 添加10秒延迟，避免Transifex API限流
+        console.log(`\n⏳ [上传延迟] 等待10秒后开始上传文件到Transifex...`);
+        const delayStart = new Date();
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        const delayEnd = new Date();
+        const actualDelay = (delayEnd.getTime() - delayStart.getTime()) / 1000;
+        console.log(`✓ [上传延迟] 延迟完成，实际等待了 ${actualDelay.toFixed(1)} 秒`);
+        console.log(`\n🚀 开始上传文件到Transifex...`);
+        
+        let successCount = 0;
+        let skipCount = 0;
+        let failCount = 0;
+        
+        for (let i = 0; i < transifexFilesToUpload.length; i++) {
+            const { file, language, resource } = transifexFilesToUpload[i];
+            const progress = `[${i+1}/${transifexFilesToUpload.length}]`;
+            console.log(`\n${progress} 📤 上传文件到Transifex:`);
+            console.log(`   文件: ${file}`);
+            console.log(`   语言: ${language}`);
+            
+            try {
+                // 使用Transifex模块的uploadTranslation方法上传，处理返回结果
+                const result = await Transifex.uploadTranslatedFileToTransifex(language, file, resource.transifexResourceId);
+                
+                if (result === true) {
+                    successCount++;
+                    console.log(`✅ 文件上传成功`);
+                } else {
+                    failCount++;
+                    console.error(`❌ 文件上传失败`);
+                }
+            } catch (error) {
+                failCount++;
+                console.error(`❌ 上传文件时发生异常:`, error);
+            }
+        }
+        
+        // 输出上传统计
+        console.log(`\n===== 上传统计 =====`);
+        console.log(`📊 总计上传: ${transifexFilesToUpload.length} 个文件`);
+        console.log(`✅ 上传成功: ${successCount} 个文件`);
+        console.log(`❌ 上传失败: ${failCount} 个文件`);
+        
+        // 计算上传成功率
+        const uploadSuccessRate = ((successCount / transifexFilesToUpload.length) * 100).toFixed(1);
+        console.log(`📈 上传成功率: ${uploadSuccessRate}%`);
+    }
+    
+    // 任务完成统计
+    console.log(`\n========== 翻译任务完成 ==========`);
+    console.log(`✨ AI翻译完成: ${translatedFiles.size} 个文件`);
+    console.log(`🔄 繁体转换完成: ${transifexFilesToUpload.length - translatedFiles.size} 个文件`);
+    console.log(`📝 总计处理完成: ${translatedFiles.size + (transifexFilesToUpload.length - translatedFiles.size)} 个文件`);
+    
+    // 添加任务耗时统计
+    const endTime = new Date();
+    console.log(`\n⏱️ 任务结束时间: ${endTime.toLocaleString()}`);
 }
 
 // 执行主函数
