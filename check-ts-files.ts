@@ -222,26 +222,9 @@ function extractLanguageCode(filename: string): string | null {
 export async function processAllTsFiles() {
     const filesToTranslate: { file: string; langCode: string; resource: any; repoPath: string; isTraditionalChinese?: boolean }[] = [];
     let totalFilesFound = 0;
-    const processedFiles = new Set<string>(); // 用于跟踪已处理的文件
+    const processedFiles = new Set<string>();
     
     try {
-        // 读取脚本根目录下的language.yml文件获取语种列表
-        const languageYmlPath = './language.yml';
-        if (!fs.existsSync(languageYmlPath)) {
-            console.log(`脚本根目录不存在language.yml文件，退出检查`);
-            return filesToTranslate;
-        }
-        
-        const languageCodes = fs.readFileSync(languageYmlPath, 'utf8')
-            .split('\n')
-            .filter(line => line.trim().length > 0)
-            .map(line => line.trim());
-            
-        console.log(`从脚本根目录的language.yml中读取到${languageCodes.length}种语言: ${languageCodes.join(', ')}`);
-        
-        // 添加当前工作目录信息
-        console.log(`当前工作目录: ${process.cwd()}`);
-        
         // 从 YAML 文件中读取所有项目信息
         const allResources = await loadAllResources();
 
@@ -250,6 +233,9 @@ export async function processAllTsFiles() {
         allResources.forEach((res, index) => {
             console.log(`项目${index+1}: ${JSON.stringify(res)}`);
         });
+
+        // 添加当前工作目录信息
+        console.log(`当前工作目录: ${process.cwd()}`);
 
         // 遍历每个项目
         for (const resource of allResources) {
@@ -317,7 +303,7 @@ export async function processAllTsFiles() {
             
             console.log(`检测到的可能前缀: ${Array.from(prefixes).join(', ') || '无'}`);
             
-            // 筛选符合条件的ts文件 - 使用更通用的匹配模式，适应不同的前缀命名
+            // 筛选符合条件的ts文件
             const matchingTsFiles: { file: string; langCode: string }[] = [];
             
             for (const file of tsFiles) {
@@ -329,17 +315,11 @@ export async function processAllTsFiles() {
                     continue;
                 }
                 
-                if (!languageCodes.includes(langCode)) {
-                    console.log(`  注意：文件 ${file} - 语言代码 ${langCode} 不在language.yml中，但作为tx pull获取的新语种将被处理`);
-                    // 仍然添加到匹配文件中进行处理
-                    matchingTsFiles.push({ file, langCode });
-                    continue;
-                }
-                
+                // 不再检查language.yml中的语言列表，直接处理所有从tx pull获取的文件
                 matchingTsFiles.push({ file, langCode });
             }
             
-            console.log(`找到 ${matchingTsFiles.length} 个匹配language.yml中语言的文件`);
+            console.log(`找到 ${matchingTsFiles.length} 个需要处理的翻译文件`);
             
             // 处理每个匹配的ts文件
             for (const { file: tsFile, langCode } of matchingTsFiles) {

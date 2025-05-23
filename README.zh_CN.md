@@ -48,8 +48,6 @@
    - o:linuxdeepin:p:deepin-file-manager
    ```
 
-3. **language.yml**: 包含需要支持的语言代码列表，如果需要新增语种，则添加到该文件中即可。
-
 ### 运行脚本
 
 直接运行以下命令启动翻译流程:
@@ -102,16 +100,15 @@ $ bun --inspect index.ts
 
 1. 检测最后一次的commmit提交（对应CI流程中transfix传过来的pr）是否包含xx_en.ts（或xx_en_US.ts）和transfix字段，用于启动脚本的触发
 2. 在开始翻译前，使用tx pull拉取transfix最新翻译文件，避免冲突和翻译爱好者的翻译被覆盖
-3. 将对应项目translations文件夹中的ts文件与language.yml文件中的ts文件中作匹配，检测是否出现translations中没有的语种
-4. 如果出现了通过脚本获取将xx_en.ts文件中的translations字段全替换为“unfinished”后的内容（因为目前脚本检测当前文本是否需要翻译是通过检测是否包含unfinished进行的），生成对应语种的ts文件，再执行后续步骤；如果没出现，直接走后续步骤
-5. 对检测到的文件进行分类:
+3. 检查并处理从Transifex获取的所有翻译文件
+4. 对检测到的文件进行分类:
    - 繁体中文文件(zh_HK, zh_TW): 使用规则库匹配方式处理
    - 小语种文件(如德语、日语等): 跳过不由脚本处理
    - 其他语种: 使用AI大模型进行翻译
-6. 通过 API 方式上传翻译后的ts文件到 Transifex
-7. Transifex平台 到翻译推送后创建给对应项目推送Pr
-8. 人工核查
-9. 翻译合入
+5. 通过 API 方式上传翻译后的ts文件到 Transifex
+6. Transifex平台 到翻译推送后创建给对应项目推送Pr
+7. 人工核查
+8. 翻译合入
 
 ## 资源和链接
 

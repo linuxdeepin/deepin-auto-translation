@@ -49,8 +49,6 @@ Important note: This project provides a set of scripts and utility functions for
    - o:linuxdeepin:p:deepin-file-manager
    ```
 
-3. **language.yml**: Contains a list of language codes to support. If you need to add a new language, simply add it to this file.
-
 ### Running the Script
 
 Run the following command to start the translation process:
@@ -103,16 +101,15 @@ Then open the browser at the subsequently output address to debug. Even if you d
 
 1. Detect whether the last commit (corresponding to the PR sent from the CI process in Transifex) contains xx_en.ts (or xx_en_US.ts) and the "transfix" field, used to trigger the script
 2. Before starting translation, use tx pull to pull the latest translation files from Transifex to avoid conflicts and overwriting translations from translation enthusiasts
-3. Match ts files in the project's translations folder with ts files in the language.yml file to detect if there are any languages missing from the translations
-4. If there are missing languages, use the script to get the content from xx_en.ts with all translation fields replaced with "unfinished" (because the current script detects whether text needs translation by checking if it contains "unfinished"), generate the corresponding language ts file, and then proceed to the next steps; if not, directly proceed to the next steps
-5. Classify the detected files:
+3. Check and process all translation files obtained from Transifex
+4. Classify the detected files:
    - Traditional Chinese files (zh_HK, zh_TW): Process using rule-based matching
    - Minor language files (such as German, Japanese, etc.): Skip, not processed by the script
    - Other languages: Use AI large language models for translation
-6. Upload the translated ts files to Transifex via API
-7. After the translation is pushed to the Transifex platform, create and push a PR to the corresponding project
-8. Manual review
-9. Translation merged
+5. Upload the translated ts files to Transifex via API
+6. After the translation is pushed to the Transifex platform, create and push a PR to the corresponding project
+7. Manual review
+8. Translation merged
 
 ## Resources and Links
 
