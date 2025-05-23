@@ -34,7 +34,7 @@ const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
  fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
 */
 // 获取所有项目名
-console.log('开始获取 Transifex 项目列表...');
+console.log('测试~~~~开始获取 Transifex 项目列表...');
 const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
 console.log(`成功获取 ${transifexProjects.length} 个项目`);
 fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
@@ -448,9 +448,8 @@ async function processTraditionalChineseFiles(
                     // 使用转义引号确保路径正确处理
                     const escapedZhCNFilePath = zhCNFilePath.replace(/"/g, '\\"');
                     
-                    // 使用相对路径的命令，不再依赖绝对路径
-                    // 而是直接使用当前目录下的工具
-                    const command = `./deepin-translation-utils zhconv -t ${langCode} "${escapedZhCNFilePath}"`;
+                    // 使用绝对路径执行命令，不再使用相对路径
+                    const command = `"${utilsPath}" zhconv -t ${langCode} "${escapedZhCNFilePath}"`;
                     console.log(`[繁体处理] ${fileProgress} 开始生成${langCode}文件`);
                     console.log(`[繁体处理] ${fileProgress} 执行命令: ${command}`);
                     
