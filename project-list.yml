@@ -1,0 +1,8 @@
+# 指定需要拉取的项目列表
+# 如果此文件为空或不存在，将拉取所有项目
+# 项目格式为: 'o:linuxdeepin:p:项目名'
+projects:
+  - 'o:linuxdeepin:p:deepin-draw'
+  # - 'o:linuxdeepin:p:deepin-terminal'
+  # - 'o:linuxdeepin:p:deepin-editor'
+  # 取消注释上面的行来指定要拉取的项目 

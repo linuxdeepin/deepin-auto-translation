@@ -24,20 +24,51 @@ const TRANSLATION_SERVICE = {
 // 在这里选择要使用的翻译服务，同理管理使用的模型接口
 const selectedTranslationService = TRANSLATION_SERVICE.OPENAI;
 
-/*
- 需要获取所有项目名后，再挑选需要的项目
- const transifexProjects = await Transifex.getAllProjects('o:linuxdeepin');
- // 过滤掉指定的项目
- const filteredProjects = transifexProjects.filter(project => 
-   !['o:linuxdeepin:p:linyaps', 'o:linuxdeepin:p:other-products', 'o:linuxdeepin:p:scan-assistant'].includes(project)
- );
- fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
-*/
+// 读取配置文件
+function readConfig() {
+    try {
+        const configContent = fs.readFileSync('./config.yml', 'utf8');
+        const config = YAML.load(configContent) as { transifex: { organization: string } };
+        return config;
+    } catch (error) {
+        console.error('读取配置文件失败:', error);
+        process.exit(1);
+    }
+}
+
+// 读取项目列表
+function readProjectList() {
+    try {
+        if (!fs.existsSync('./project-list.yml')) {
+            console.log('项目列表文件不存在，将拉取所有项目');
+            return null;
+        }
+        const projectListContent = fs.readFileSync('./project-list.yml', 'utf8');
+        const projectList = YAML.load(projectListContent) as { projects: string[] };
+        return projectList.projects;
+    } catch (error) {
+        console.error('读取项目列表失败:', error);
+        process.exit(1);
+    }
+}
+
 // 获取所有项目名
 console.log('开始获取 Transifex 项目列表...');
-const transifexProjects = await Transifex.getAllProjects('o:peeweep-test');
-console.log(`成功获取 ${transifexProjects.length} 个项目`);
-fs.writeFileSync('./transifex-projects.yml', YAML.dump(transifexProjects));
+const config = readConfig();
+const projectList = readProjectList();
+const transifexProjects = await Transifex.getAllProjects(config.transifex.organization);
+
+// 如果指定了项目列表，则过滤项目
+let filteredProjects = transifexProjects;
+if (projectList && projectList.length > 0) {
+    console.log(`从配置文件中读取到 ${projectList.length} 个指定项目`);
+    filteredProjects = transifexProjects.filter(project => projectList.includes(project));
+    console.log(`成功匹配到 ${filteredProjects.length} 个项目`);
+} else {
+    console.log(`未指定项目列表，将处理所有 ${transifexProjects.length} 个项目`);
+}
+
+fs.writeFileSync('./transifex-projects.yml', YAML.dump(filteredProjects));
 
 console.log('开始获取项目关联资源...');
 const allResources = await Transifex.getAllLinkedResourcesFromProjects(YAML.load(fs.readFileSync('./transifex-projects.yml', 'utf8')) as string[]);

@@ -1,0 +1,3 @@
+transifex:
+  organization: 'o:linuxdeepin'  # Transifex organization ID
+  # You can add more Transifex related configurations here if needed 
