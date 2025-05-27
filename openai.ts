@@ -43,123 +43,210 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         }
     }).then(response => {
         // response as json array
-        console.groupCollapsed("Translation status");
-        console.log(response.data.choices[0].message.content);
-        // 对返回内容进行预处理，移除可能的Markdown代码块标记和清理内容
-        const content = response.data.choices[0].message.content.replace(/```json\n?|\n?```/g, '').trim();
-        try {
-            // 尝试修复JSON格式问题，处理可能的未终止字符串
-            let fixedContent = content;
-            // 检查是否是有效的JSON
-            if (!isValidJson(fixedContent)) {
-                console.log("尝试修复不完整的JSON...");
-                // 1. 查找缺少闭合引号的字符串
-                fixedContent = fixJsonString(fixedContent);
-                // 2. 如果仍然无效，尝试更简单的方式：截断内容到最后一个完整的JSON对象
-                if (!isValidJson(fixedContent)) {
-                    console.log("尝试截断到最后一个完整对象...");
-                    fixedContent = truncateToValidJson(fixedContent);
-                }
-                console.log("修复后的JSON:", fixedContent);
+        console.log("[翻译状态] 开始处理翻译响应");
+        
+        // 格式化JSON输出的辅助函数
+        function formatJSON(obj: any): string {
+            try {
+                return JSON.stringify(obj, null, 2);
+            } catch (error) {
+                return String(obj);
             }
-            const responsedTranslations = JSON.parse(fixedContent);
-            if (Array.isArray(responsedTranslations) && responsedTranslations.length === messages.length) {
-                console.log(`Translated ${messages.length} strings`);
-                for (let i = 0; i < messages.length; i++) {
-                    const translation = responsedTranslations[i];
+        }
+        
+        // 显示原始响应，使用格式化的JSON
+        console.log("[原始响应]");
+        console.log(response.data.choices[0].message.content);
+        
+        // 对返回内容进行预处理，移除可能的Markdown代码块标记和清理内容
+        let content = response.data.choices[0].message.content.replace(/```json\n?|\n?```/g, '').trim();
+        
+        // 检查和修复基本的JSON格式问题
+        function validateAndCleanJson(str: string): string {
+            try {
+                // 基础清理
+                str = str.replace(/\t/g, ' '); // 替换制表符为空格
+                str = str.replace(/\s+/g, ' '); // 合并多个空格
+                str = str.replace(/\[\]{/g, '['); // 修复开头的[]{
+                str = str.replace(/}:{/g, '},{'); // 修复}:{这样的格式
+                
+                // 移除注释
+                str = str.replace(/\/\/.*/g, '');
+                
+                // 清理属性名中的空格
+                str = str.replace(/"(\w+)\s*":/g, '"$1":');
+                
+                // 移除末尾逗号
+                str = str.replace(/,(\s*[\]}])/g, '$1');
+                
+                // 确保是数组格式
+                str = str.trim();
+                if (!str.startsWith('[')) str = '[' + str;
+                if (!str.endsWith(']')) str = str + ']';
+                
+                // 修复不完整的对象
+                str = str.replace(/({[^}]*)}?\s*$/, '$1}]');
+                
+                // 尝试解析，如果失败则进行更深层的修复
+                try {
+                    const parsed = JSON.parse(str);
+                    return JSON.stringify(parsed); // 返回标准化的JSON字符串
+                } catch (e) {
+                    // 提取所有完整的对象
+                    const objects = str.match(/{[^}]+}/g) || [];
+                    if (objects.length > 0) {
+                        return '[' + objects.join(',') + ']';
+                    }
+                }
+                
+                return str;
+            } catch (error) {
+                console.error('[JSON清理] 清理JSON时发生错误:', error.message);
+                return str;
+            }
+        }
+        
+        // 清理和验证JSON
+        const originalContent = content;
+        content = validateAndCleanJson(content);
+        
+        try {
+            // 解析JSON
+            const parsedContent = JSON.parse(content);
+            
+            // 显示响应概览
+            if (Array.isArray(parsedContent)) {
+                console.log(`[响应概览] 收到 ${parsedContent.length} 条翻译`);
+            }
+
+            // 验证翻译质量的辅助函数
+            function isValidTranslation(source: string, translation: string): { valid: boolean; reason?: string } {
+                // 检查基本有效性
+                if (!translation || typeof translation !== 'string') {
+                    return { valid: false, reason: '翻译内容为空或格式错误' };
+                }
+
+                // 检查翻译是否过长（通常翻译不应该比原文长5倍以上）
+                if (translation.length > source.length * 5) {
+                    return { valid: false, reason: '翻译内容异常长' };
+                }
+
+                // 检查重复字符
+                const repeatedChar = /(.)\1{10,}/;  // 同一字符重复10次以上
+                if (repeatedChar.test(translation)) {
+                    return { valid: false, reason: '包含过多重复字符' };
+                }
+
+                // 检查乱码（检查是否包含特殊Unicode字符或控制字符）
+                const invalidChars = /[\u0000-\u001F\u007F-\u009F\uFFFD\uFFFE\uFFFF]/;
+                if (invalidChars.test(translation)) {
+                    return { valid: false, reason: '包含无效字符或乱码' };
+                }
+
+                // 检查是否全是相同的字符
+                const uniqueChars = new Set(translation.replace(/\s/g, ''));
+                if (uniqueChars.size === 1 && translation.length > 5) {
+                    return { valid: false, reason: '翻译内容全是相同的字符' };
+                }
+
+                // 检查是否包含过多的标点符号
+                const punctuationCount = (translation.match(/[.,!?;:]/g) || []).length;
+                if (punctuationCount > translation.length / 3) {
+                    return { valid: false, reason: '包含过多标点符号' };
+                }
+
+                return { valid: true };
+            }
+
+            // 先尝试解析整个数组以验证格式
+            const parsedArray = parsedContent;
+            if (!Array.isArray(parsedArray)) {
+                console.error('[翻译错误] 响应格式错误: 响应解析结果不是数组');
+                console.error('[翻译错误] 跳过当前批次的翻译');
+                return;
+            }
+
+            // 检查数组长度是否匹配
+            if (parsedArray.length !== messages.length) {
+                console.log('[翻译警告] 翻译数量不匹配');
+                console.log(`- 预期数量: ${messages.length}`);
+                console.log(`- 实际数量: ${parsedArray.length}`);
+                console.log('- 继续处理可用的翻译');
+            }
+
+            let successCount = 0;
+            let skipCount = 0;
+            let qualityIssueCount = 0;
+            
+            console.log('[翻译详情] 开始处理翻译条目:');
+            for (let i = 0; i < Math.min(messages.length, parsedArray.length); i++) {
+                try {
+                    const translation = parsedArray[i];
                     let translationElement = messages[i].translationElement;
+                    const sourceText = messages[i].source;
+                    
+                    // 检查翻译是否有效
+                    if (!translation || !translation.translation || typeof translation.translation !== 'string') {
+                        console.log(`[条目 ${i+1}/${messages.length}] ❌ 跳过`);
+                        console.log(`- 原文: "${sourceText}"`);
+                        console.log(`- 原因: 无效的翻译内容`);
+                        if (translation) {
+                            console.log(`- 返回: ${JSON.stringify(translation)}`);
+                        }
+                        skipCount++;
+                        continue;
+                    }
+
+                    // 检查翻译质量
+                    const qualityCheck = isValidTranslation(sourceText, translation.translation);
+                    if (!qualityCheck.valid) {
+                        console.log(`[条目 ${i+1}/${messages.length}] ⚠️ 质量问题`);
+                        console.log(`- 原文: "${sourceText}"`);
+                        console.log(`- 译文: "${translation.translation}"`);
+                        console.log(`- 原因: ${qualityCheck.reason}`);
+                        qualityIssueCount++;
+                        skipCount++;
+                        continue;
+                    }
+                    
                     if (translationElement) {
                         translationElement.textContent = translation.translation;
-                        // also check if we need to remove the type=unfinished attribute
                         if (!keepUnfinishedTypeAttr && translationElement.getAttribute('type') === 'unfinished') {
                             translationElement.removeAttribute('type');
                         }
+                        console.log(`[条目 ${i+1}/${messages.length}] ✓ 成功`);
+                        console.log(`- 原文: "${sourceText}"`);
+                        console.log(`- 译文: "${translation.translation}"`);
+                        successCount++;
                     }
+                } catch (error) {
+                    console.log(`[条目 ${i+1}/${messages.length}] ❌ 跳过`);
+                    console.log(`- 原文: "${messages[i].source}"`);
+                    console.log(`- 原因: 处理出错 (${error.message})`);
+                    skipCount++;
                 }
-            } else {
-                console.log(Array.isArray(responsedTranslations), responsedTranslations.length, messages.length);
-                console.error(`Unexpected response from OpenAI endpoint: ${responsedTranslations}`);
             }
-            // also log token usage
-            console.log(response.data.usage);
-            console.groupEnd();
+            
+            // 输出处理结果统计
+            console.log('[翻译完成] 处理结果统计:');
+            console.log(`- 成功翻译: ${successCount} 条`);
+            console.log(`- 跳过翻译: ${skipCount} 条`);
+            if (qualityIssueCount > 0) {
+                console.log(`- 质量问题: ${qualityIssueCount} 条`);
+            }
+            console.log(`- 完成比例: ${((successCount / messages.length) * 100).toFixed(1)}%`);
+            
+            // 使用单行输出token使用情况
+            if (response.data.usage) {
+                console.log('[Token统计]', JSON.stringify(response.data.usage));
+            }
         } catch (error) {
-            console.error("JSON解析错误:", error);
-            console.error("原始内容:", response.data.choices[0].message.content);
-            console.error("处理后内容:", content);
-            console.groupEnd();
+            console.error('[翻译错误] JSON解析失败:', error.message);
+            console.error('[翻译错误] 跳过当前批次的翻译');
+            return;
         }
     }).catch(error => {
-        console.error(error);
+        console.error('[翻译错误] API请求失败:', error.message);
+        console.error('[翻译错误] 跳过当前批次的翻译');
     });
-}
-
-// 检查字符串是否为有效的JSON
-function isValidJson(str) {
-    try {
-        JSON.parse(str);
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
-// 尝试修复未终止的JSON字符串
-function fixJsonString(str) {
-    // 如果是数组开头但没有数组结尾，添加结尾
-    if (str.trim().startsWith('[') && !str.trim().endsWith(']')) {
-        str = str.trim() + ']';
-    }
-    
-    // 查找可能未闭合的对象
-    const matches = str.match(/{[^}]*$/g);
-    if (matches) {
-        str = str.replace(/{[^}]*$/g, '}');
-    }
-    
-    // 查找可能未闭合的引号
-    let inString = false;
-    let lastQuotePos = -1;
-    let needsClosingQuote = false;
-    
-    for (let i = 0; i < str.length; i++) {
-        if (str[i] === '"' && (i === 0 || str[i-1] !== '\\')) {
-            if (inString) {
-                inString = false;
-            } else {
-                inString = true;
-                lastQuotePos = i;
-            }
-        }
-    }
-    
-    // 如果字符串以未闭合的引号结束，添加闭合引号
-    if (inString) {
-        const beforeQuote = str.substring(0, lastQuotePos);
-        const afterQuote = str.substring(lastQuotePos);
-        // 限制翻译内容长度，避免过长的无效内容
-        const maxLength = 100; // 合理的翻译长度限制
-        const quotedContent = afterQuote.substring(1, Math.min(maxLength, afterQuote.length));
-        str = beforeQuote + '"' + quotedContent + '"' + (afterQuote.length > maxLength ? '}]' : '');
-    }
-    
-    return str;
-}
-
-// 截断内容到最后一个完整的JSON对象
-function truncateToValidJson(str) {
-    // 如果是数组格式，尝试保留开头和必要的部分
-    if (str.trim().startsWith('[')) {
-        // 尝试保留开头的[和第一个完整对象
-        const match = str.match(/\[\s*{[^{]*?}\s*(?:,|$)/);
-        if (match) {
-            return match[0].endsWith(',') ? match[0].slice(0, -1) + ']' : match[0] + ']';
-        }
-        
-        // 如果无法找到完整对象，但有开始标记，构建一个最小有效的JSON数组
-        return '[{"source":"Error parsing response","translation":"翻译解析错误"}]';
-    }
-    
-    // 无法修复，返回一个最小有效的JSON
-    return '[{"source":"Error parsing response","translation":"翻译解析错误"}]';
 }
