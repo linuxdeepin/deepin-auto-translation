@@ -510,64 +510,64 @@ async function main() {
     }
     
     // 第三步：统一上传所有文件到Transifex
-    if (transifexFilesToUpload.length > 0) {
-        console.log(`\n===== 步骤3：上传翻译文件到Transifex =====`);
-        console.log(`📤 准备上传 ${transifexFilesToUpload.length} 个翻译文件到Transifex平台`);
+    // if (transifexFilesToUpload.length > 0) {
+    //     console.log(`\n===== 步骤3：上传翻译文件到Transifex =====`);
+    //     console.log(`📤 准备上传 ${transifexFilesToUpload.length} 个翻译文件到Transifex平台`);
         
-        // TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
-        // 临时屏蔽上传翻译文件到Transifex平台功能
-        // console.log(`\n⚠️ [已屏蔽] 上传翻译文件到Transifex平台的功能已临时关闭`);
-        console.log(`ℹ️ 共有 ${transifexFilesToUpload.length} 个翻译文件未上传到Transifex平台`);
+    //     // TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+    //     // 临时屏蔽上传翻译文件到Transifex平台功能
+    //     // console.log(`\n⚠️ [已屏蔽] 上传翻译文件到Transifex平台的功能已临时关闭`);
+    //     console.log(`ℹ️ 共有 ${transifexFilesToUpload.length} 个翻译文件未上传到Transifex平台`);
         
-        // 如需重新启用此功能，请删除此注释块并取消下方代码的注释
+    //     // 如需重新启用此功能，请删除此注释块并取消下方代码的注释
         
-        // 添加10秒延迟，避免Transifex API限流
-        console.log(`\n⏳ [上传延迟] 等待10秒后开始上传文件到Transifex...`);
-        const delayStart = new Date();
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        const delayEnd = new Date();
-        const actualDelay = (delayEnd.getTime() - delayStart.getTime()) / 1000;
-        console.log(`✓ [上传延迟] 延迟完成，实际等待了 ${actualDelay.toFixed(1)} 秒`);
-        console.log(`\n🚀 开始上传文件到Transifex...`);
+    //     // 添加10秒延迟，避免Transifex API限流
+    //     console.log(`\n⏳ [上传延迟] 等待10秒后开始上传文件到Transifex...`);
+    //     const delayStart = new Date();
+    //     await new Promise(resolve => setTimeout(resolve, 10000));
+    //     const delayEnd = new Date();
+    //     const actualDelay = (delayEnd.getTime() - delayStart.getTime()) / 1000;
+    //     console.log(`✓ [上传延迟] 延迟完成，实际等待了 ${actualDelay.toFixed(1)} 秒`);
+    //     console.log(`\n🚀 开始上传文件到Transifex...`);
         
-        let successCount = 0;
-        let skipCount = 0;
-        let failCount = 0;
+    //     let successCount = 0;
+    //     let skipCount = 0;
+    //     let failCount = 0;
         
-        for (let i = 0; i < transifexFilesToUpload.length; i++) {
-            const { file, language, resource } = transifexFilesToUpload[i];
-            const progress = `[${i+1}/${transifexFilesToUpload.length}]`;
-            console.log(`\n${progress} 📤 上传文件到Transifex:`);
-            console.log(`   文件: ${file}`);
-            console.log(`   语言: ${language}`);
+    //     for (let i = 0; i < transifexFilesToUpload.length; i++) {
+    //         const { file, language, resource } = transifexFilesToUpload[i];
+    //         const progress = `[${i+1}/${transifexFilesToUpload.length}]`;
+    //         console.log(`\n${progress} 📤 上传文件到Transifex:`);
+    //         console.log(`   文件: ${file}`);
+    //         console.log(`   语言: ${language}`);
             
-            try {
-                // 使用Transifex模块的uploadTranslation方法上传，处理返回结果
-                const result = await Transifex.uploadTranslatedFileToTransifex(language, file, resource.transifexResourceId);
+    //         try {
+    //             // 使用Transifex模块的uploadTranslation方法上传，处理返回结果
+    //             const result = await Transifex.uploadTranslatedFileToTransifex(language, file, resource.transifexResourceId);
                 
-                if (result === true) {
-                    successCount++;
-                    console.log(`✅ 文件上传成功`);
-                } else {
-                    failCount++;
-                    console.error(`❌ 文件上传失败`);
-                }
-            } catch (error) {
-                failCount++;
-                console.error(`❌ 上传文件时发生异常:`, error);
-            }
-        }
+    //             if (result === true) {
+    //                 successCount++;
+    //                 console.log(`✅ 文件上传成功`);
+    //             } else {
+    //                 failCount++;
+    //                 console.error(`❌ 文件上传失败`);
+    //             }
+    //         } catch (error) {
+    //             failCount++;
+    //             console.error(`❌ 上传文件时发生异常:`, error);
+    //         }
+    //     }
         
-        // 输出上传统计
-        console.log(`\n===== 上传统计 =====`);
-        console.log(`📊 总计上传: ${transifexFilesToUpload.length} 个文件`);
-        console.log(`✅ 上传成功: ${successCount} 个文件`);
-        console.log(`❌ 上传失败: ${failCount} 个文件`);
+    //     // 输出上传统计
+    //     console.log(`\n===== 上传统计 =====`);
+    //     console.log(`📊 总计上传: ${transifexFilesToUpload.length} 个文件`);
+    //     console.log(`✅ 上传成功: ${successCount} 个文件`);
+    //     console.log(`❌ 上传失败: ${failCount} 个文件`);
         
-        // 计算上传成功率
-        const uploadSuccessRate = ((successCount / transifexFilesToUpload.length) * 100).toFixed(1);
-        console.log(`📈 上传成功率: ${uploadSuccessRate}%`);
-    }
+    //     // 计算上传成功率
+    //     const uploadSuccessRate = ((successCount / transifexFilesToUpload.length) * 100).toFixed(1);
+    //     console.log(`📈 上传成功率: ${uploadSuccessRate}%`);
+    // }
     
     // 任务完成统计
     console.log(`\n========== 翻译任务完成 ==========`);
