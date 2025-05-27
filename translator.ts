@@ -49,13 +49,13 @@ export async function translateLinguistTsFile(translator: TranslationOperation, 
         return 0;
     }
     
-    // split translationQueue into batches, each batch contains 10 messages
-    const batchSize = 10;
+    // split translationQueue into batches, each batch contains 15 messages
+    const batchSize = 15;
     for (let i = 0; i < translationQueue.length; i += batchSize) {
         const batch = translationQueue.slice(i, i + batchSize);
         await translator(batch, targetLanguage, keepUnfinishedTypeAttr);
-        // 添加5秒延迟，让翻译更稳定
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // 添加2秒延迟，让翻译更稳定
+        await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
     // 使用与原文件相同的编码写回
