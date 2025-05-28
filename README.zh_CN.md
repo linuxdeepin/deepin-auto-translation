@@ -16,6 +16,39 @@
 - 支持自动创建缺失的语言翻译文件
 - 提交翻译结果同步transfix平台（由于是本地模拟，也有一个git 提交的流程）
 
+## 使用步骤（推荐流程）
+
+1. **配置 Transifex 组织名**  
+   编辑 `config.yml`，填写你的 Transifex 组织名，例如：
+   ```yaml
+   transifex:
+     organization: 'o:linuxdeepin'
+   ```
+
+2. **选择需要处理的项目**  
+   编辑 `project-list.yml`，在 `projects:` 下填写你想处理的项目（格式为 `o:组织:p:项目名`）。  
+   - 如果该文件为空或不存在，则会自动拉取组织下的所有项目。
+   - 例如：
+     ```yaml
+     projects:
+       - 'o:linuxdeepin:p:deepin-draw'
+       # - 'o:linuxdeepin:p:deepin-terminal'
+     ```
+
+3. **用 tx push 推送项目配置**  
+   根据前两步的配置，使用 `tx push` 命令将本地的项目配置推送到 Transifex 平台，确保平台上有最新的资源和配置。  
+   这样后续所有操作都能与 Transifex 平台保持同步。
+
+4. **启动自动翻译流程**  
+   ```bash
+   bun index.ts
+   ```
+   脚本会自动完成：  
+   - 获取并同步 Transifex 项目资源
+   - 克隆/更新本地仓库
+   - 检查并处理 TS 文件
+   - 自动翻译/转换/同步/推送等
+
 ## 使用方法
 
 ### 环境准备

@@ -111,14 +111,26 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         content = validateAndCleanJson(content);
         
         try {
-            // 解析JSON
+            // 解析响应内容
             const parsedContent = JSON.parse(content);
             
-            // 显示响应概览
-            if (Array.isArray(parsedContent)) {
-                console.log(`[响应概览] 收到 ${parsedContent.length} 条翻译`);
+            // 检查数组格式
+            if (!Array.isArray(parsedContent)) {
+                console.error('[错误] 响应格式错误: 不是数组格式');
+                return;
             }
 
+            // 检查数组长度
+            if (parsedContent.length !== messages.length) {
+                console.error(`[警告] 翻译数量不匹配 (预期: ${messages.length}, 实际: ${parsedContent.length})`);
+            }
+
+            let successCount = 0;
+            let skipCount = 0;
+            let qualityIssueCount = 0;
+            
+            console.log('[翻译] 开始处理...');
+            
             // 验证翻译质量的辅助函数
             function isValidTranslation(source: string, translation: string): { valid: boolean; reason?: string } {
                 // 检查基本有效性
@@ -149,11 +161,11 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                     return { valid: false, reason: '翻译内容全是相同的字符' };
                 }
 
-                // 检查是否包含过多的标点符号
-                const punctuationCount = (translation.match(/[.,!?;:]/g) || []).length;
-                if (punctuationCount > translation.length / 3) {
-                    return { valid: false, reason: '包含过多标点符号' };
-                }
+                // // 检查是否包含过多的标点符号
+                // const punctuationCount = (translation.match(/[.,!?;:]/g) || []).length;
+                // if (punctuationCount > translation.length / 3) {
+                //     return { valid: false, reason: '包含过多标点符号' };
+                // }
 
                 return { valid: true };
             }
@@ -174,10 +186,6 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                 console.log('- 继续处理可用的翻译');
             }
 
-            let successCount = 0;
-            let skipCount = 0;
-            let qualityIssueCount = 0;
-            
             console.log('[翻译详情] 开始处理翻译条目:');
             for (let i = 0; i < Math.min(messages.length, parsedArray.length); i++) {
                 try {
@@ -187,6 +195,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                     
                     // 检查翻译是否有效
                     if (!translation || !translation.translation || typeof translation.translation !== 'string') {
+                        // 保留错误信息的详细输出
                         console.log(`[条目 ${i+1}/${messages.length}] ❌ 跳过`);
                         console.log(`- 原文: "${sourceText}"`);
                         console.log(`- 原因: 无效的翻译内容`);
@@ -200,6 +209,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                     // 检查翻译质量
                     const qualityCheck = isValidTranslation(sourceText, translation.translation);
                     if (!qualityCheck.valid) {
+                        // 保留质量问题的详细输出
                         console.log(`[条目 ${i+1}/${messages.length}] ⚠️ 质量问题`);
                         console.log(`- 原文: "${sourceText}"`);
                         console.log(`- 译文: "${translation.translation}"`);
@@ -214,12 +224,12 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                         if (!keepUnfinishedTypeAttr && translationElement.getAttribute('type') === 'unfinished') {
                             translationElement.removeAttribute('type');
                         }
-                        console.log(`[条目 ${i+1}/${messages.length}] ✓ 成功`);
-                        console.log(`- 原文: "${sourceText}"`);
-                        console.log(`- 译文: "${translation.translation}"`);
+                        // 成功翻译只显示条目编号，不显示详情
+                        console.log(`[条目 ${i+1}/${messages.length}] ✓`);
                         successCount++;
                     }
                 } catch (error) {
+                    // 保留错误信息的详细输出
                     console.log(`[条目 ${i+1}/${messages.length}] ❌ 跳过`);
                     console.log(`- 原文: "${messages[i].source}"`);
                     console.log(`- 原因: 处理出错 (${error.message})`);
@@ -241,8 +251,10 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                 console.log('[Token统计]', JSON.stringify(response.data.usage));
             }
         } catch (error) {
-            console.error('[翻译错误] JSON解析失败:', error.message);
-            console.error('[翻译错误] 跳过当前批次的翻译');
+            // 简化错误输出，避免产生大量空行
+            console.error('[错误] JSON解析失败');
+            console.error('原因:', error.message);
+            console.error('原始响应:', response.data.choices[0].message.content.substring(0, 200) + '...');
             return;
         }
     }).catch(error => {

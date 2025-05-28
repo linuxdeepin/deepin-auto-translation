@@ -49,8 +49,8 @@ export async function translateLinguistTsFile(translator: TranslationOperation, 
         return 0;
     }
     
-    // split translationQueue into batches, each batch contains 25 messages
-    const batchSize = 25;
+    // split translationQueue into batches, each batch contains 30 messages
+    const batchSize = 30;
     for (let i = 0; i < translationQueue.length; i += batchSize) {
         const batch = translationQueue.slice(i, i + batchSize);
         await translator(batch, targetLanguage, keepUnfinishedTypeAttr);

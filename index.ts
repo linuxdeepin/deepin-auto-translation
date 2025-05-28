@@ -511,53 +511,78 @@ async function main() {
     
     // 第三步：统一上传所有文件到Transifex
     if (transifexFilesToUpload.length > 0) {
-        console.log(`\n===== 步骤3：上传翻译文件到Transifex =====`);
+        console.log(`\n===== 步骤3：使用tx push上传翻译文件到Transifex =====`);
         console.log(`📤 准备上传 ${transifexFilesToUpload.length} 个翻译文件到Transifex平台`);
+
+        // 按仓库路径分组文件
+        const repoGroups = new Map<string, { file: string; language: string; resource: TransifexResource }[]>();
         
-        // TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
-        // 临时屏蔽上传翻译文件到Transifex平台功能
-        // console.log(`\n⚠️ [已屏蔽] 上传翻译文件到Transifex平台的功能已临时关闭`);
-        console.log(`ℹ️ 共有 ${transifexFilesToUpload.length} 个翻译文件未上传到Transifex平台`);
-        
-        // 如需重新启用此功能，请删除此注释块并取消下方代码的注释
-        
-        // 添加10秒延迟，避免Transifex API限流
-        console.log(`\n⏳ [上传延迟] 等待10秒后开始上传文件到Transifex...`);
-        const delayStart = new Date();
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        const delayEnd = new Date();
-        const actualDelay = (delayEnd.getTime() - delayStart.getTime()) / 1000;
-        console.log(`✓ [上传延迟] 延迟完成，实际等待了 ${actualDelay.toFixed(1)} 秒`);
-        console.log(`\n🚀 开始上传文件到Transifex...`);
-        
-        let successCount = 0;
-        let skipCount = 0;
-        let failCount = 0;
-        
-        for (let i = 0; i < transifexFilesToUpload.length; i++) {
-            const { file, language, resource } = transifexFilesToUpload[i];
-            const progress = `[${i+1}/${transifexFilesToUpload.length}]`;
-            console.log(`\n${progress} 📤 上传文件到Transifex:`);
-            console.log(`   文件: ${file}`);
-            console.log(`   语言: ${language}`);
+        for (const item of transifexFilesToUpload) {
+            // 获取项目根目录路径（repo/linuxdeepin/xxx）
+            const fullPath = path.resolve(item.file);
+            // 修改正则表达式，确保只匹配到仓库根目录，不包含translations等子目录
+            const match = fullPath.match(/repo\/linuxdeepin\/[^\/]+(?=\/|$)/);
+            if (!match) {
+                console.error(`❌ 错误: 无法从路径 ${item.file} 中提取项目根目录`);
+                continue;
+            }
+            const repoPath = match[0];
             
+            if (!repoGroups.has(repoPath)) {
+                repoGroups.set(repoPath, []);
+            }
+            repoGroups.get(repoPath)?.push(item);
+        }
+
+        console.log(`\n📦 按仓库分组后，共有 ${repoGroups.size} 个仓库需要处理`);
+
+        let successCount = 0;
+        let failCount = 0;
+
+        // 遍历每个仓库执行tx push
+        for (const [repoPath, files] of repoGroups.entries()) {
+            console.log(`\n🔄 处理仓库: ${repoPath}`);
+            console.log(`📝 该仓库有 ${files.length} 个文件需要上传`);
+
             try {
-                // 使用Transifex模块的uploadTranslation方法上传，处理返回结果
-                const result = await Transifex.uploadTranslatedFileToTransifex(language, file, resource.transifexResourceId);
-                
-                if (result === true) {
-                    successCount++;
-                    console.log(`✅ 文件上传成功`);
-                } else {
-                    failCount++;
-                    console.error(`❌ 文件上传失败`);
+                // 检查.tx/config文件是否存在
+                const txConfigPath = path.join(repoPath, '.tx', 'config');
+                if (!fs.existsSync(txConfigPath)) {
+                    console.error(`❌ 错误: 仓库 ${repoPath} 中未找到 .tx/config 文件，跳过处理`);
+                    failCount += files.length;
+                    continue;
                 }
+
+                // 切换到仓库目录
+                const originalCwd = process.cwd();
+                process.chdir(repoPath);
+
+                // 执行tx push命令
+                console.log(`🚀 开始执行tx push命令...`);
+                const { execSync } = require('child_process');
+                try {
+                    const output = execSync('tx push -s -t', { 
+                        encoding: 'utf8',
+                        stdio: 'pipe',
+                        timeout: 300000 // 5分钟超时
+                    });
+                    console.log(`✅ tx push执行成功`);
+                    console.log(`📋 命令输出:\n${output}`);
+                    successCount += files.length;
+                } catch (error) {
+                    console.error(`❌ tx push执行失败:`, error);
+                    failCount += files.length;
+                }
+
+                // 切回原目录
+                process.chdir(originalCwd);
+
             } catch (error) {
-                failCount++;
-                console.error(`❌ 上传文件时发生异常:`, error);
+                console.error(`❌ 处理仓库 ${repoPath} 时发生错误:`, error);
+                failCount += files.length;
             }
         }
-        
+
         // 输出上传统计
         console.log(`\n===== 上传统计 =====`);
         console.log(`📊 总计上传: ${transifexFilesToUpload.length} 个文件`);
@@ -567,6 +592,10 @@ async function main() {
         // 计算上传成功率
         const uploadSuccessRate = ((successCount / transifexFilesToUpload.length) * 100).toFixed(1);
         console.log(`📈 上传成功率: ${uploadSuccessRate}%`);
+
+        if (failCount > 0) {
+            console.log(`\n⚠️ 警告：有 ${failCount} 个文件上传失败，请检查上方日志了解详细信息`);
+        }
     }
     
     // 任务完成统计
