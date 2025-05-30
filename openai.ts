@@ -56,7 +56,11 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         
         // 显示原始响应，使用格式化的JSON
         console.log("[原始响应]");
-        console.log(response.data.choices[0].message.content);
+        // 过滤掉大量空行，只保留有实际内容的行
+        const responseLines = response.data.choices[0].message.content.split('\n');
+        const filteredLines = responseLines.filter(line => line.trim() !== '').slice(0, 20); // 只显示前20行有内容的行
+        const cleanedResponse = filteredLines.join('\n');
+        console.log(cleanedResponse + (responseLines.length > filteredLines.length ? '\n...' : ''));
         
         // 对返回内容进行预处理，移除可能的Markdown代码块标记和清理内容
         let content = response.data.choices[0].message.content.replace(/```json\n?|\n?```/g, '').trim();
@@ -138,35 +142,46 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                     return { valid: false, reason: '翻译内容为空或格式错误' };
                 }
 
-                // 检查翻译是否过长（通常翻译不应该比原文长5倍以上）
-                if (translation.length > source.length * 5) {
-                    return { valid: false, reason: '翻译内容异常长' };
+                // 去除首尾空白字符进行检查
+                const trimmedTranslation = translation.trim();
+                if (trimmedTranslation.length === 0) {
+                    return { valid: false, reason: '翻译内容为空' };
                 }
 
-                // 检查重复字符
-                const repeatedChar = /(.)\1{10,}/;  // 同一字符重复10次以上
+                // 检查是否只包含问号或无意义字符（明显的乱码标志）
+                if (/^[\s\?!@#$%^&*()_+=\-\[\]{}|\\:";'<>,.\/~`]*$/.test(trimmedTranslation)) {
+                    return { valid: false, reason: '翻译内容只包含符号或问号，可能是乱码' };
+                }
+
+                // 检查翻译是否异常长（比原文长10倍以上才认为异常）
+                if (translation.length > source.length * 10) {
+                    return { valid: false, reason: '翻译内容异常长，可能存在问题' };
+                }
+
+                // 检查是否包含大量重复的同一字符（同一字符连续重复20次以上）
+                const repeatedChar = /(.)\1{19,}/;  // 同一字符重复20次以上
                 if (repeatedChar.test(translation)) {
-                    return { valid: false, reason: '包含过多重复字符' };
+                    return { valid: false, reason: '包含过多重复字符，可能是乱码' };
                 }
 
-                // 检查乱码（检查是否包含特殊Unicode字符或控制字符）
-                const invalidChars = /[\u0000-\u001F\u007F-\u009F\uFFFD\uFFFE\uFFFF]/;
+                // 只检查明显的控制字符和替换字符（保留换行符\n和制表符\t）
+                const invalidChars = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFFFD\uFFFE\uFFFF]/;
                 if (invalidChars.test(translation)) {
-                    return { valid: false, reason: '包含无效字符或乱码' };
+                    return { valid: false, reason: '包含无效控制字符，可能是乱码' };
                 }
 
-                // 检查是否全是相同的字符
+                // 检查是否整个翻译都是相同的单个字符（长度大于10且全是同一字符）
                 const uniqueChars = new Set(translation.replace(/\s/g, ''));
-                if (uniqueChars.size === 1 && translation.length > 5) {
-                    return { valid: false, reason: '翻译内容全是相同的字符' };
+                if (uniqueChars.size === 1 && translation.length > 10) {
+                    return { valid: false, reason: '翻译内容全是相同字符，可能是乱码' };
                 }
 
-                // // 检查是否包含过多的标点符号
-                // const punctuationCount = (translation.match(/[.,!?;:]/g) || []).length;
-                // if (punctuationCount > translation.length / 3) {
-                //     return { valid: false, reason: '包含过多标点符号' };
-                // }
+                // 检查是否翻译结果异常短（原文超过50字符但翻译只有1-2个字符）
+                if (source.length > 50 && trimmedTranslation.length <= 2) {
+                    return { valid: false, reason: '翻译内容过短，可能不完整' };
+                }
 
+                // 其他情况都认为是有效的翻译
                 return { valid: true };
             }
 
@@ -254,7 +269,11 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             // 简化错误输出，避免产生大量空行
             console.error('[错误] JSON解析失败');
             console.error('原因:', error.message);
-            console.error('原始响应:', response.data.choices[0].message.content.substring(0, 200) + '...');
+            // 过滤掉大量空行，只保留有实际内容的行
+            const responseLines = response.data.choices[0].message.content.split('\n');
+            const filteredLines = responseLines.filter(line => line.trim() !== '').slice(0, 10); // 错误时只显示前10行有内容的行
+            const cleanedResponse = filteredLines.join('\n');
+            console.error('原始响应:', cleanedResponse + (responseLines.length > filteredLines.length ? '\n...' : ''));
             return;
         }
     }).catch(error => {

@@ -58,11 +58,47 @@ export async function translateLinguistTsFile(translator: TranslationOperation, 
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
-    // 使用与原文件相同的编码写回
-    const serializedXml = new XMLSerializer().serializeToString(doc);
-    fs.writeFileSync(inputFilePath, serializedXml, { encoding: 'utf8' });
+    // 安全地序列化和写回XML文件，避免格式破坏
+    try {
+        // 首先备份原始文件的第一行（XML声明）和格式
+        const originalContent = fs.readFileSync(inputFilePath, 'utf8');
+        const xmlDeclarationMatch = originalContent.match(/^<\?xml[^>]*\?>\s*/);
+        const xmlDeclaration = xmlDeclarationMatch ? xmlDeclarationMatch[0] : '<?xml version="1.0" encoding="utf-8"?>\n';
+        
+        // 序列化文档
+        const serializedXml = new XMLSerializer().serializeToString(doc);
+        
+        // 清理序列化后的内容，移除可能的多余空行和格式问题
+        let cleanedXml = serializedXml
+            .replace(/^\s*<\?xml[^>]*\?>\s*/, '') // 移除XMLSerializer可能添加的XML声明
+            .replace(/\n\s*\n\s*\n/g, '\n\n') // 将连续的多个空行合并为最多两个换行
+            .replace(/>\s*\n\s*</g, '>\n<') // 标准化标签间的换行
+            .trim();
+        
+        // 重新组装最终内容
+        const finalContent = xmlDeclaration + cleanedXml + '\n';
+        
+        // 写回文件
+        fs.writeFileSync(inputFilePath, finalContent, { encoding: 'utf8' });
+        
+        console.log(`Finished translating ${translationQueue.length} strings in ${inputFilePath}`);
+    } catch (writeError) {
+        console.error(`写回文件 ${inputFilePath} 时出错:`, writeError);
+        console.error('尝试保留原始文件格式...');
+        
+        // 如果出错，尝试更保守的方式：只更新翻译内容，保持原始文件结构
+        try {
+            const originalContent = fs.readFileSync(inputFilePath, 'utf8');
+            // 这里应该已经通过DOM操作更新了翻译内容，所以直接保存修改后的内容
+            const serializedXml = new XMLSerializer().serializeToString(doc);
+            fs.writeFileSync(inputFilePath, serializedXml, { encoding: 'utf8' });
+            console.log(`使用备用方式完成文件写入: ${inputFilePath}`);
+        } catch (backupError) {
+            console.error(`备用写入方式也失败:`, backupError);
+            throw backupError;
+        }
+    }
     
-    console.log(`Finished translating ${translationQueue.length} strings in ${inputFilePath}`);
     return translationQueue.length;
 }
 
