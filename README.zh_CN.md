@@ -223,7 +223,7 @@ $ bun --inspect index.ts
 
 ### CI自动化翻译流程
 
-我们还提供了一套部署在CI环境中的自动翻译流程：
+提供了一套部署在CI环境中的自动翻译流程：
 
 1. **更新源文件**  
    首先需要在项目中更新在`.tx/config`和`.transifex.yml`中规定的源文件，增加翻译内容，提交到GitHub后合入主分支
@@ -233,11 +233,13 @@ $ bun --inspect index.ts
 
 3. **启动自动翻译**  
    在由Transifex触发的PR中(格式例如：`[deepin-draw] Updates for project Deepin Draw #150`)，使用以下命令触发自动翻译：
-   ```
+   ```bash
    /test deepin-auto-translation
    ```
    
    接下来在CI中执行的步骤参考脚本的实际流程：
+
+   > **注意**: CI配置基于[deepin-auto-translation/test](https://github.com/linuxdeepin/deepin-auto-translation/tree/develop/test)分支，其他项目如需运行CI，需要基于此分支修改相应的yaml配置文件。
 
    **3.1 读取配置和项目列表**  
    - 读取`config.yml`获取Transifex组织信息
@@ -265,14 +267,19 @@ $ bun --inspect index.ts
 
 4. **查看翻译结果**  
    可以在CI执行结果中查看具体的翻译细节和日志，例如：
-   [CI执行示例](https://prow.cicd.getdeepin.org/view/s3/prow-logs/pr-logs/pull/linuxdeepin_deepin-draw/143/deepin-auto-translation/1927888385188302848)
+   [CI执行示例](https://prow.cicd.getdeepin.org/view/s3/prow-logs/pull/linuxdeepin_deepin-draw/143/deepin-auto-translation/1927888385188302848)
 
 ### 注意事项
 
-- **免费模型限制**: 由于使用的是免费模型，翻译效果相对一般，可能出现部分内容翻译不完整的情况。建议在生产环境中使用付费模型以获得更好的翻译质量
-- **重试机制**: 某些语种可能会出现`tx push`失败的情况，这时可以多执行一次CI流程来解决
-- **日志格式问题**: 在CI环境中可能会出现翻译日志包含较多空行的情况，这通常是由于JSON读取失败导致的。虽然不影响实际使用，但在本地环境中较少出现此问题
-- **Transifex平台状态**: 偶尔会遇到Transifex平台响应缓慢的情况，这时API可能会报错，稍后重试即可
+- **免费模型限制**: 当前使用免费模型进行翻译，效果可能不够理想，部分内容可能出现翻译不完整的情况。建议在生产环境中使用付费模型以提升翻译质量。
+
+- **重试机制**: 部分语种在执行`tx push`时可能会失败，此时重新执行一次CI流程即可解决。
+
+- **Transifex平台状态**: Transifex平台偶尔会出现响应缓慢的情况，导致API调用失败，建议稍后重试。
+
+- **CI配置说明**: CI配置基于[deepin-auto-translation/test](https://github.com/linuxdeepin/deepin-auto-translation/tree/develop/test)分支，其他项目如需运行CI，需要基于此分支修改相应的yaml配置文件。
+
+- **CI执行建议**: 首次执行时由于内容较多，在同时运行多个项目CI的情况下可能会遇到失败。建议在晚间执行CI，成功率更高。
 
 ## 资源和链接
 

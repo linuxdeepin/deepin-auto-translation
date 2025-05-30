@@ -234,11 +234,13 @@ We also provide an automated translation process deployed in CI environment:
 
 3. **Start Automatic Translation**  
    In the PR triggered by Transifex (format example: `[deepin-draw] Updates for project Deepin Draw #150`), use the following command to trigger automatic translation:
-   ```
+   ```bash
    /test deepin-auto-translation
    ```
    
    The following steps are executed in CI referencing the actual script workflow:
+
+   > **Note**: CI configuration is based on the [deepin-auto-translation/test](https://github.com/linuxdeepin/deepin-auto-translation/tree/develop/test) branch. Other projects that need to run CI should modify the corresponding yaml configuration files based on this branch.
 
    **3.1 Read Configuration and Project List**  
    - Read `config.yml` to get Transifex organization information
@@ -270,10 +272,15 @@ We also provide an automated translation process deployed in CI environment:
 
 ### Notes
 
-- **Free Model Limitations**: Since free models are used, translation quality is relatively average and some content may not be fully translated. It's recommended to use paid models in production environments for better translation quality
-- **Retry Mechanism**: Some languages may experience `tx push` failures, in which case you can execute the CI process again to resolve the issue
-- **Log Format Issues**: In CI environment, translation logs may contain many blank lines, usually caused by JSON reading failures. Although it doesn't affect actual usage, this issue occurs less frequently in local environments
-- **Transifex Platform Status**: Occasionally you may encounter slow response from Transifex platform, causing API errors, just retry later
+- **Free Model Limitations**: Currently using free models for translation, the translation quality may not be ideal, and some content may appear incomplete. It's recommended to use paid models in production environments to improve translation quality.
+
+- **Retry Mechanism**: Some languages may fail when executing `tx push`, in which case re-executing the CI process once can solve the issue.
+
+- **Transifex Platform Status**: Transifex platform occasionally experiences slow response, causing API call failures. It's recommended to retry later.
+
+- **CI Configuration Notes**: CI configuration is based on the [deepin-auto-translation/test](https://github.com/linuxdeepin/deepin-auto-translation/tree/develop/test) branch. Other projects that need to run CI should modify the corresponding yaml configuration files based on this branch.
+
+- **CI Execution Recommendations**: During initial execution, due to the large amount of content, failures may occur when running multiple project CIs simultaneously. It's recommended to execute CI in the evening for higher success rates.
 
 ## Resources and Links
 
