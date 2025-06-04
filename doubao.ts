@@ -44,7 +44,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         }
     }).then(response => {
         // response as json array
-        console.log('[翻译状态] 开始处理翻译响应');
+        console.log(`[翻译状态] 开始处理翻译响应 (目标语言: ${targetLanguage})`);
         // 过滤掉大量空行，只保留有实际内容的行
         const responseLines = response.data.choices[0].message.content.split('\n');
         const filteredLines = responseLines.filter(line => line.trim() !== '').slice(0, 20); // 只显示前20行有内容的行
@@ -191,8 +191,10 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             const filteredLines = responseLines.filter(line => line.trim() !== '').slice(0, 10); // 错误时只显示前10行有内容的行
             const cleanedResponse = filteredLines.join('\n');
             console.error('原始响应:', cleanedResponse + (responseLines.length > filteredLines.length ? '\n...' : ''));
+            console.error(`[处理结果] 由于JSON解析失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
         }
     }).catch(error => {
-        console.error(error);
+        console.error('[翻译错误] API请求失败:', error.message);
+        console.error(`[处理结果] 由于API请求失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
     });
 }

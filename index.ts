@@ -89,7 +89,7 @@ async function ensureFileEncoding(filePath: string) {
 }
 
 // 直接调用Translator进行翻译，跳过Transifex上传操作
-async function translateTsFile(filePath: string, langCode: string): Promise<boolean> {
+export async function translateTsFile(filePath: string, langCode: string): Promise<boolean> {
     try {
         console.log(`直接翻译文件: ${filePath} (${langCode})`);
         

@@ -18,7 +18,9 @@ const MINOR_LANGUAGES = {
     'ja': '日语',
     'uk': '乌克兰语',
     'pt_BR': '巴西葡萄牙语',
-    'sq': '阿尔巴尼亚语'
+    'sq': '阿尔巴尼亚语',
+    'zh_CN': '简体中文',
+    'pl': '波兰语'
 };
 
 /**
@@ -37,6 +39,7 @@ async function loadAllResources() {
  * 1. 检查仓库中是否有.tx/config文件
  * 2. 如果存在.tx/config文件，则使用transifex-cli拉取所有翻译
  * 3. 如果仓库没有.tx/config文件，则输出日志提示
+ * 4. 清理translations目录中的@Arab语种文件
  */
 function syncTranslationsFromTransifex(repository: string, repoPath: string) {
     console.log(`正在从Transifex平台同步${repository}仓库的翻译文件...`);
@@ -51,6 +54,24 @@ function syncTranslationsFromTransifex(repository: string, repoPath: string) {
             // 临时屏蔽tx pull功能 TTTTTTTTTTTTTTT
             Transifex.downloadTranslationFilesViaCli(repoPath);
             //console.log(`[已屏蔽] 从Transifex同步${repository}的翻译文件功能已临时关闭`);
+            
+            // 检查并清理@Arab语种文件
+            const translationsDir = path.join(repoPath, 'translations');
+            if (fs.existsSync(translationsDir)) {
+                console.log(`检查translations目录中的@Arab语种文件...`);
+                try {
+                    const files = fs.readdirSync(translationsDir);
+                    for (const file of files) {
+                        if (file.includes('@Arab') && file.endsWith('.ts')) {
+                            const filePath = path.join(translationsDir, file);
+                            console.log(`删除@Arab语种文件: ${filePath}`);
+                            fs.unlinkSync(filePath);
+                        }
+                    }
+                } catch (error) {
+                    console.error(`清理@Arab语种文件时出错:`, error);
+                }
+            }
         } else {
             console.log(`仓库${repository}没有.tx/config配置文件，无法从Transifex同步翻译`);
         }
