@@ -35,8 +35,9 @@ export async function translateLinguistTsFile(translator: TranslationOperation, 
             return 0;
         }
     }
+    // 只跳过完全相同的英语代码，允许英语变体之间的本地化（如 en 源文 -> en_AU 目标文）
     if (targetLanguage === 'en') {
-        console.log(`${inputFilePath} is already in English, skipped...`);
+        console.log(`${inputFilePath} is already in English (en), skipped...`);
         return 0;
     }
     console.log(`Translating ${inputFilePath} to ${targetLanguage}`);

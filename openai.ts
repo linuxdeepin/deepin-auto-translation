@@ -43,7 +43,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         }
     }).then(response => {
         // response as json array
-        console.log("[翻译状态] 开始处理翻译响应");
+        console.log(`[翻译状态] 开始处理翻译响应 (当前处理中语言: ${targetLanguage})`);
         
         // 格式化JSON输出的辅助函数
         function formatJSON(obj: any): string {
@@ -189,7 +189,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             const parsedArray = parsedContent;
             if (!Array.isArray(parsedArray)) {
                 console.error('[翻译错误] 响应格式错误: 响应解析结果不是数组');
-                console.error('[翻译错误] 跳过当前批次的翻译');
+                console.error(`[处理结果] 由于响应格式错误，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
                 return;
             }
 
@@ -274,10 +274,11 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             const filteredLines = responseLines.filter(line => line.trim() !== '').slice(0, 10); // 错误时只显示前10行有内容的行
             const cleanedResponse = filteredLines.join('\n');
             console.error('原始响应:', cleanedResponse + (responseLines.length > filteredLines.length ? '\n...' : ''));
+            console.error(`[处理结果] 由于JSON解析失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
             return;
         }
     }).catch(error => {
         console.error('[翻译错误] API请求失败:', error.message);
-        console.error('[翻译错误] 跳过当前批次的翻译');
+        console.error(`[处理结果] 由于API请求失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
     });
 }

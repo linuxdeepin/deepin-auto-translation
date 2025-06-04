@@ -8,7 +8,15 @@ import { execSync } from 'node:child_process';
 import { TransifexResource, TransifexYaml } from './types';
 import * as Settings from './settings';
 
-export function ensureLocalReposExist(resources: TransifexResource[], useMirror: boolean = true)
+/**
+ * 确保本地仓库存在
+ * @param resources Transifex资源列表
+ * @param useMirror 是否使用gitee镜像（默认false，避免需要gitee访问权限）
+ * 
+ * 注意：useMirror参数默认值已从true改为false，以支持仅使用GitHub的环境
+ * 如需恢复gitee镜像加速，请将默认值改回true：useMirror: boolean = true
+ */
+export function ensureLocalReposExist(resources: TransifexResource[], useMirror: boolean = false)
 {
     for (const resource of resources) {
         const { repository, branch, additionalMarker } = resource;
@@ -21,6 +29,8 @@ export function ensureLocalReposExist(resources: TransifexResource[], useMirror:
         if (!fs.existsSync(repoPath)) {
             console.log(`repo ${repoPath} does not exist, cloning...`);
             let repoUrl = `https://github.com/${repository}.git`;
+            // 注意：此处的镜像重定向逻辑已被useMirror=false默认值禁用
+            // 如需启用gitee镜像加速，请确保有gitee访问权限，然后将useMirror默认值改回true
             if (repoUrl.startsWith("https://github.com/linuxdeepin") && useMirror) {
                 // replace to `https://gitee.com/deepin-community` mirror for faster clone
                 repoUrl = repoUrl.replace("github.com/linuxdeepin", "gitee.com/deepin-community");
