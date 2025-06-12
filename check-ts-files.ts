@@ -33,13 +33,38 @@ async function loadAllResources() {
 }
 
 /**
+ * 递归删除指定目录及其子目录中的@Arab语种文件
+ * @param dir 要检查的目录路径
+ */
+function removeArabFilesRecursively(dir: string) {
+    try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            
+            if (entry.isDirectory()) {
+                // 递归处理子目录
+                removeArabFilesRecursively(fullPath);
+            } else if (entry.isFile() && entry.name.includes('@Arab') && entry.name.endsWith('.ts')) {
+                // 删除@Arab语种文件
+                console.log(`删除@Arab语种文件: ${fullPath}`);
+                fs.unlinkSync(fullPath);
+            }
+        }
+    } catch (error) {
+        console.error(`处理目录 ${dir} 时出错:`, error);
+    }
+}
+
+/**
  * 从 Transifex 同步翻译文件
  * 
  * 功能说明：
  * 1. 检查仓库中是否有.tx/config文件
  * 2. 如果存在.tx/config文件，则使用transifex-cli拉取所有翻译
  * 3. 如果仓库没有.tx/config文件，则输出日志提示
- * 4. 清理translations目录中的@Arab语种文件
+ * 4. 递归清理translations目录及其子目录中的@Arab语种文件
  */
 function syncTranslationsFromTransifex(repository: string, repoPath: string) {
     console.log(`正在从Transifex平台同步${repository}仓库的翻译文件...`);
@@ -55,22 +80,11 @@ function syncTranslationsFromTransifex(repository: string, repoPath: string) {
             Transifex.downloadTranslationFilesViaCli(repoPath);
             //console.log(`[已屏蔽] 从Transifex同步${repository}的翻译文件功能已临时关闭`);
             
-            // 检查并清理@Arab语种文件
+            // 递归检查并清理@Arab语种文件
             const translationsDir = path.join(repoPath, 'translations');
             if (fs.existsSync(translationsDir)) {
-                console.log(`检查translations目录中的@Arab语种文件...`);
-                try {
-                    const files = fs.readdirSync(translationsDir);
-                    for (const file of files) {
-                        if (file.includes('@Arab') && file.endsWith('.ts')) {
-                            const filePath = path.join(translationsDir, file);
-                            console.log(`删除@Arab语种文件: ${filePath}`);
-                            fs.unlinkSync(filePath);
-                        }
-                    }
-                } catch (error) {
-                    console.error(`清理@Arab语种文件时出错:`, error);
-                }
+                console.log(`递归检查translations目录及其子目录中的@Arab语种文件...`);
+                removeArabFilesRecursively(translationsDir);
             }
         } else {
             console.log(`仓库${repository}没有.tx/config配置文件，无法从Transifex同步翻译`);
