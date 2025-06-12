@@ -208,8 +208,7 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
 ### 数据文件
 
 - **`config.yml`** - Transifex组织配置
-- **`project-list.yml`** - 包含需要处理的Transifex项目ID列表（可选）
-- **`transifex-projects.yml`** - 自动生成的项目过滤结果文件
+- **`transifex-projects.yml`** - 项目列表配置文件（自动生成或手动编辑）
 - **`language.yml`** - 语言代码映射和元数据（如果存在）
 
 ### 外部依赖
@@ -273,18 +272,7 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
    - CI流程会读取此配置来获取组织下的所有项目列表
    - 确保翻译工具连接到正确的Transifex组织账户
 
-2. **project-list.yml**: 包含需要处理的Transifex项目ID列表（可选）
-   ```yaml
-   projects:
-      - 'o:linuxdeepin:p:deepin-desktop-environment'
-      - 'o:linuxdeepin:p:deepin-file-manager'
-   ```
-   
-   **作用说明**：
-   - 限制翻译工具只处理指定的项目列表，而不是组织下的所有项目
-   - 如果此文件不存在或为空，工具会自动处理组织下的所有项目
-   
-3. **transifex-projects.yml**: 项目过滤结果文件
+2. **transifex-projects.yml**: 项目列表配置文件（自动生成或手动配置）
    
    ```yaml
    - 'o:linuxdeepin:p:deepin-desktop-environment'
@@ -294,14 +282,18 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
    
    **作用说明**：
    
-   - **项目过滤结果**：包含经过 `project-list.yml` 过滤后的最终项目列表
+   - **项目列表配置**：包含需要处理的Transifex项目ID列表
+   - **自动生成**：如果文件不存在，工具会自动从Transifex API获取组织下的所有项目并生成此文件
+   - **手动配置**：用户可以编辑此文件，只保留需要处理的项目，以限制翻译工具的处理范围
+   - **灵活控制**：支持处理所有项目（保持完整列表）或特定项目（删除不需要的项目ID）
 
 **配置文件工作原理**：
 
 - CI流程启动时首先读取 `config.yml` 获取组织信息。
-- 通过Transifex API获取该组织下的所有项目。
-- 如果存在 `project-list.yml`，则过滤出指定的项目进行处理，为空就拉取所有项目。
-- ** `transifex-projects.yml`** 保存过滤后的项目列表。
+- 检查是否存在 `transifex-projects.yml` 文件：
+  - 如果存在且非空，直接使用其中的项目列表
+  - 如果不存在或为空，从Transifex API获取指定组织的所有项目并自动生成此文件
+- 用户可以随时编辑 `transifex-projects.yml` 来调整需要处理的项目范围
 - 后续步骤从 `transifex-projects.yml` 读取项目信息，获取关联的GitHub资源。
 
 ### 使用方法
@@ -358,13 +350,12 @@ graph TD
 
 **步骤1：读取配置和项目列表**  
 - 读取`config.yml`获取Transifex组织信息
-- 读取`project-list.yml`，如果不存在则处理所有项目
-- 从Transifex API获取指定组织的所有项目列表
+- 检查是否存在`transifex-projects.yml`配置文件：
+  - 如果存在且非空，直接使用其中的项目列表
+  - 如果不存在或为空，从Transifex API获取指定组织的所有项目并自动生成此文件
 
-**步骤2：项目过滤和资源获取**  
-- 根据`project-list.yml`过滤项目（如果指定了的话）
-- 生成并更新`transifex-projects.yml`文件
-- 获取所有项目的关联GitHub仓库资源
+**步骤2：项目资源获取**  
+- 使用最终确定的项目列表获取所有项目的关联GitHub仓库资源
 
 **步骤3：本地仓库准备**  
 - 自动克隆或更新本地仓库到`repo/`目录

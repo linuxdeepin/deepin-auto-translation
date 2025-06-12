@@ -1,1 +1,24 @@
-- o:linuxdeepin:p:deepin-calculator
+# Transifex项目列表配置文件
+# 指定需要处理的项目列表
+# 
+# 使用说明：
+# - 如果此文件不存在，工具会自动从Transifex API获取组织下的所有项目并生成此文件
+# - 如果此文件存在，工具会直接使用文件中的项目列表，不再调用API
+# - 用户可以编辑此文件，删除不需要处理的项目行，以限制处理范围
+# - 要处理所有项目，请保持文件包含完整的项目列表
+# - 要处理特定项目，请删除不需要的项目行，只保留需要的项目
+# 
+# 项目ID格式: 'o:组织名:p:项目名'
+# 示例配置（请根据实际需要调整）：
+
+# 当前启用的项目（取消注释以启用）：
+- 'o:linuxdeepin:p:deepin-calculator'
+
+# 其他可用项目（取消注释以启用）：
+# - 'o:linuxdeepin:p:deepin-draw'
+# - 'o:linuxdeepin:p:deepin-terminal'
+# - 'o:linuxdeepin:p:deepin-editor'
+# - 'o:linuxdeepin:p:deepin-file-manager'
+# - 'o:linuxdeepin:p:deepin-desktop-environment'
+
+# 注意：如果要处理所有项目，建议删除此文件，让工具自动生成完整列表
