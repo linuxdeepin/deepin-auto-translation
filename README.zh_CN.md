@@ -14,7 +14,7 @@
 - 支持多种大模型翻译服务(DOUBAO, OPENAI等)
 - 特别处理繁体中文(zh_HK, zh_TW)翻译，采用规则库匹配方式
 - 支持自动创建缺失的语言翻译文件
-- 提交翻译结果同步transfix平台（由于是本地模拟，也有一个git 提交的流程）
+- 提交翻译结果同步transfix平台
 
 ## 环境准备
 
@@ -200,7 +200,7 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
 
 ### 配置与实用工具
 
-- **`settings.ts`** - 模型配置和系统设置
+- **`settings.ts`** - 模型配置
 - **`secrets.ts`** - API密钥和身份验证凭据（用户创建）
 - **`types.ts`** - TypeScript类型定义和接口
 - **`prompt.ts`** - 翻译提示模板和本地化规则
@@ -209,7 +209,6 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
 
 - **`config.yml`** - Transifex组织配置
 - **`transifex-projects.yml`** - 项目列表配置文件（自动生成或手动编辑）
-- **`language.yml`** - 语言代码映射和元数据（如果存在）
 
 ### 外部依赖
 
@@ -254,7 +253,7 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
 - 同步配置：[Transifex翻译同步配置指南](https://wikidev.uniontech.com/Transifex%E7%BF%BB%E8%AF%91%E5%90%8C%E6%AD%A5%E9%85%8D%E7%BD%AE%E6%8C%87%E5%8D%97)
 - 工具使用：[Deepin-translation-utils使用说明](https://wikidev.uniontech.com/Deepin-translation-utils%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E) (可用于生成对应项目的config和transifex.yaml文件)
 
-使用前，建议用tx 命令先测试下是否配置成功。（例如 tx pull -a  拉取transifex平台的最新翻译）
+使用前，务必用tx 命令先测试下是否配置成功，否则无法更新后续代码。（例如 tx pull -a  拉取transifex平台的最新翻译）
 
 ### 项目配置文件介绍
 
@@ -266,26 +265,29 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
    transifex:
      organization: 'o:linuxdeepin'
    ```
-   
+
    **作用说明**：
+
    - 指定翻译工具要连接的Transifex组织
    - CI流程会读取此配置来获取组织下的所有项目列表
    - 确保翻译工具连接到正确的Transifex组织账户
 
-2. **transifex-projects.yml**: 项目列表配置文件（自动生成或手动配置）
-   
+2. **transifex-projects.yml**: 项目列表配置文件（自动生成）
+
    ```yaml
    - 'o:linuxdeepin:p:deepin-desktop-environment'
    - 'o:linuxdeepin:p:deepin-file-manager'
    - 'o:linuxdeepin:p:deepin-calculator'
    ```
-   
-   **作用说明**：
-   
-   - **项目列表配置**：包含需要处理的Transifex项目ID列表
-   - **自动生成**：如果文件不存在，工具会自动从Transifex API获取组织下的所有项目并生成此文件
-   - **手动配置**：用户可以编辑此文件，只保留需要处理的项目，以限制翻译工具的处理范围
-   - **灵活控制**：支持处理所有项目（保持完整列表）或特定项目（删除不需要的项目ID）
+
+
+![企业微信截图_17497062797075](README.zh_CN.assets/17497062797075.png)
+
+**作用说明**：
+
+- **项目列表配置**：包含需要处理的Transifex项目ID列表
+- **自动生成**：在CI流程中，流水线会读取Pr（触发/test deepin-auto-translation的对应pr）中的组织名和项目名并填充到transifex-projects.yml
+- **手动配置**：用户可以编辑此文件，添加需要处理的项目，以扩展翻译工具的处理范围
 
 **配置文件工作原理**：
 
@@ -299,7 +301,7 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
 ### 使用方法
 
 1. **本地仓库更新源文件**  
-   首先需要在项目的本地仓库中合入包含 `_en.ts` 和 `zh_CN.ts` 的源文件更新，这些文件应该按照项目的 `.tx/config` 和 `.transifex.yml` 配置进行更新，然后提交到GitHub并合入主分支
+   首先需要在项目的本地仓库中合入包含 `_en.ts` 、_en_us.ts、 `zh_CN.ts`、*.ts 的源文件更新(具体请参考.tx中配置的源文件)，这些文件应该按照项目的 `.tx/config` 和 `.transifex.yml` 配置进行更新，然后提交到GitHub并合入主分支
 
 2. **Transifex自动检测变动**  
    Transifex平台会自动监控GitHub仓库，检测到翻译源文件的变化后，会分析翻译完成度的变化(默认翻译pr的触发条件是50%变动，可以找王子冲更改这个数值)
@@ -316,8 +318,16 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
    /test deepin-auto-translation
    ```
 
-   **参考：https://github.com/linuxdeepin/deepin-draw/pull/150**
+   注：如果流水线失败，可使用：
 
+   ```
+   /retest
+   ```
+   
+    重启
+   
+   **参考：https://github.com/linuxdeepin/deepin-draw/pull/150**
+   
 5. **查看翻译结果**  
    可以在CI执行结果中查看具体的翻译细节和日志，例如：
    [CI执行示例](https://prow.cicd.getdeepin.org/view/s3/prow-logs/pull/linuxdeepin_deepin-draw/143/deepin-auto-translation/1927888385188302848)
@@ -373,13 +383,10 @@ graph TD
 
 ### 注意事项
 
-- **免费模型限制**: 当前使用免费模型进行翻译，效果可能不够理想，部分内容可能出现翻译错的现象（脚本做了跳过处理）。建议在生产环境中使用付费模型以提升翻译质量（此外，硅基流动每个账号有12元的免费额度可以用，大部分项目第一次迭代由于量大，建议用付费模型效果更好）。
-- **重试机制**: 部分语种在执行`tx push`时可能会失败，此时重新执行一次CI流程即可解决。
-- **Transifex平台状态**: Transifex平台偶尔会出现响应缓慢的情况，导致API调用失败，建议稍后重试。
-- **CI配置说明**: CI配置基于[deepin-auto-translation/test](https://github.com/linuxdeepin/deepin-auto-translation/tree/develop/test)分支，其他项目如需运行CI，需要基于此分支修改相应的yaml配置文件。
-- **CI执行建议**: 首次执行时由于内容较多，在同时运行多个项目CI的情况下可能会遇到失败。建议在晚间执行CI，成功率更高。
-- 项目pr合入要记得用Squash merge ，否则会有很多commit记录在git log中。
-- 由于AI翻译中文会可能有歧义，从而导致繁体翻译有偏差，这也是为什么要求在使用脚本前要保证中文翻译是已经处理完的。
+- **免费模型限制**: 当前使用免费模型进行翻译，翻译质量可能差强人意。
+- **Transifex平台状态**: Transifex平台偶尔会出现响应缓慢的情况，导致API调用失败，建议稍后重试，但概率很小。
+- **CI执行失败处理**：CI有时候会因为网速过慢导致执行失败，这种情况使用/retest重新启动流水线即可。
+- 项目pr合入建议用Squash merge ，否则会有很多commit记录在git log中。
 
 ## 闭源项目翻译流程
 

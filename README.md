@@ -15,7 +15,7 @@ Important note: This project provides a set of scripts and utility functions for
 - Supports multiple LLM translation services (DOUBAO, OPENAI, etc.)
 - Special handling for Traditional Chinese (zh_HK, zh_TW) translations using rule-based matching
 - Supports automatic creation of missing language translation files
-- Submits translation results synchronized to the Transifex platform (due to local simulation, there's also a git commit process)
+- Submits translation results synchronized to the Transifex platform
 
 ## Environment Setup
 
@@ -45,11 +45,11 @@ Official website: https://bun.sh/
 Installation steps:
 
 ```bash
-# Install bun
-# Note: If installation fails, go to https://github.com/oven-sh/bun/releases to find installation packages and manually install, then configure the path to bashrc to ensure Bun is in our PATH
+# Install bun, some environments may not install bun with this command
+# Note: If installation fails, go to https://github.com/oven-sh/bun/releases to find installation packages and manually install, then configure the path to bashrc to ensure Bun is in our path
 curl -fsSL https://bun.sh/install | bash
 
-# Add to PATH (add the following content to ~/.bashrc)
+# Add to PATH (add the following content to ~/.bashrc), if using curl -fsSL https://bun.sh/install | bash, the bun command is in this path /home/uos/.bun/bin, manual installation also recommends referring to this path
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
@@ -60,7 +60,7 @@ source ~/.bashrc
 bun --version
 ```
 
-3. **Install and Configure Transifex CLI**
+3. **Configure Transifex CLI**
 
 ```bash
 # Install Transifex CLI
@@ -107,11 +107,11 @@ export const transifex = {
 }
 ```
 
-#### Local AI Translation Deployment
+### Local AI Translation Deployment
 
 Replace the secrets.sample.ts file in the project root directory with secrets.ts, and add the corresponding LLM API key information and Model information:
 
-```c++
+```typescript
 // SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
 //
 // SPDX-License-Identifier: CC0-1.0
@@ -131,11 +131,11 @@ export const transifex = {
 export default {doubao, openai, transifex};
 ```
 
-##### Methods for Obtaining LLM API Keys and Models:
+##### Methods for obtaining LLM API keys and models:
 
 **Note: The APIs in the examples are all expired keys, only for demonstration purposes.**
 
-##### VolcEngine Doubao API Configuration Method:
+##### VolcEngine Doubao API Method Introduction:
 
 Login to VolcEngine Ark homepage https://www.volcengine.com/product/ark, register an account and login:
 
@@ -175,22 +175,22 @@ After activating the model, follow the step instructions and fill the API key an
 
 ![image-20250424102333686](README.zh_CN.assets/image-20250424102333686.png)
 
-##### SiliconFlow LLM API Configuration:
+##### SiliconFlow LLM API Call Introduction:
 
 SiliconFlow provides a series of API interfaces that allow developers to call its large language models for various artificial intelligence tasks, including dialogue generation, text processing, image generation, voice and video processing, etc.
 
-1. **Registration and Login**:
+1.**Registration and Login**:
 
 - Users need to visit SiliconFlow's official website (https://cloud.siliconflow.cn/models) and complete registration, usually through mobile phone verification code.
 
-2. **API Key Management**:
+2.**API Key Management**:
 
 - In the SiliconFlow platform, users need to create API keys, which is a necessary step for calling APIs. After creating API keys, they should be saved immediately, because in some cases, keys may not be viewable again after creation.
 - API key generation can be completed on the API management page of the user account, supporting adding descriptions.
 
 ![image-20250424104417697](README.zh_CN.assets/image-20250424104417697.png)
 
-3. After creating the key, select the model marketplace in the main menu navigation bar, you can click filter to select the model you need:
+3.After creating the key, select the model marketplace in the main menu navigation bar, you can click filter to select the model you need:
 
 ![image-20250424105658429](README.zh_CN.assets/image-20250424105658429.png)
 
@@ -200,31 +200,40 @@ After clicking to enter the model interface, click the API documentation button 
 
 ![image-20250424105823352](README.zh_CN.assets/image-20250424105823352.png)
 
-4. Calling SiliconFlow API
+4.Calling SiliconFlow API
 
 All models in SiliconFlow can be called through API, but if you want to recharge, you need real-name authentication to recharge your account (because some models are paid to use, so you need to recharge). The API calling method (taking QWen2.5 model as an example), copy the api key generated in step 2 and the model name we selected in step 3 to the secrets.ts file for script calling:
 
 ![image-20250424105408843](README.zh_CN.assets/image-20250424105408843.png)
 
-**Transifex API Key** Configuration:
-- This key doesn't need to be applied for separately, it's directly available on the wiki:
+Translation models can be configured in `settings.ts`, for example in SiliconFlow:
+
+```typescript
+export const openai = {
+    chatCompletionsEndpoint: "https://api.siliconflow.cn/v1/chat/completions",
+    model: "Qwen/Qwen2.5-7B-Instruct" // Can be replaced with other models
+```
+
+##### **Transifex API Key** Configuration Introduction:
+
+This key doesn't need to be applied for separately, it's directly available on the wiki:
 
 https://wikidev.uniontech.com/Project_Using_Transifex_Internationalization see step 3
 
 ## Project File Structure Introduction
 
-Before diving into specific workflows, here's an overview of the main files and their purposes:
+Before understanding the specific workflow, let me introduce the main files and their purposes:
 
 ### Core Files
 
 - **`index.ts`** - Main entry point for open source project workflow, handles CI automation and project coordination
-- **`closed-source.ts`** - Standalone workflow for closed source projects, provides command-line interface
+- **`closed-source.ts`** - Independent workflow for closed source projects, provides command-line interface
 - **`check-ts-files.ts`** - File discovery and classification engine, scans repositories for translation files
 
 ### Translation Engine
 
-- **`translator.ts`** - Core translation orchestrator, handles batch processing and file management
-- **`openai.ts`** - OpenAI-compatible API integration (primary translation service)
+- **`translator.ts`** - Core translation coordinator, handles batch processing and file management
+- **`openai.ts`** - OpenAI compatible API integration (main translation service)
 - **`doubao.ts`** - VolcEngine Doubao API integration (alternative translation service)
 - **`ollama.ts`** - Local Ollama model integration (self-hosted option)
 
@@ -232,11 +241,11 @@ Before diving into specific workflows, here's an overview of the main files and 
 
 - **`transifex.ts`** - Transifex platform API client, handles resource management and upload/download
 - **`gitrepo.ts`** - Git repository management, handles cloning and local repository operations
-- **`qtlinguist.ts`** - Qt Linguist TS file parser and generator, handles XML manipulation
+- **`qtlinguist.ts`** - Qt Linguist TS file parser and generator, handles XML operations
 
 ### Configuration & Utilities
 
-- **`settings.ts`** - Model configuration and system settings
+- **`settings.ts`** - Model configuration
 - **`secrets.ts`** - API keys and authentication credentials (user-created)
 - **`types.ts`** - TypeScript type definitions and interfaces
 - **`prompt.ts`** - Translation prompt templates and localization rules
@@ -244,9 +253,7 @@ Before diving into specific workflows, here's an overview of the main files and 
 ### Data Files
 
 - **`config.yml`** - Transifex organization configuration
-- **`project-list.yml`** - Optional project filtering list
-- **`transifex-projects.yml`** - Auto-generated project resource mapping
-- **`language.yml`** - Language code mapping and metadata (if exists)
+- **`transifex-projects.yml`** - Project list configuration file (auto-generated or manually edited)
 
 ### External Dependencies
 
@@ -291,11 +298,11 @@ Before using the automatic translation tool, projects must have Transifex integr
 - Sync configuration: [Transifex Translation Sync Configuration Guide](https://wikidev.uniontech.com/Transifex_Translation_Sync_Configuration_Guide)
 - Tool usage: [Deepin-translation-utils Usage Guide](https://wikidev.uniontech.com/Deepin-translation-utils_Usage_Guide) (can be used to generate corresponding project config and transifex.yaml files)
 
-Before use, it's recommended to test whether the configuration is successful with tx commands (e.g., tx pull -a to pull the latest translations from the Transifex platform).
+Before use, make sure to test whether the configuration is successful with tx commands (e.g., tx pull -a to pull the latest translations from the Transifex platform).
 
-### Project Configuration Files
+### Project Configuration Files Introduction
 
-In the open source project translation workflow, in addition to the above Transifex integration configuration, the following project-level configuration files are also needed to control the behavior of the translation tool:
+In the open source project translation workflow, in addition to the above Transifex integration configuration, the following project-level configuration files are needed to control the behavior of the translation tool:
 
 1. **config.yml**: Configure Transifex organization information
 
@@ -303,51 +310,68 @@ In the open source project translation workflow, in addition to the above Transi
    transifex:
      organization: 'o:linuxdeepin'
    ```
-   
+
    **Purpose**:
+
    - Specify the Transifex organization that the translation tool should connect to
    - The CI process will read this configuration to get the list of all projects under the organization
    - Ensure the translation tool connects to the correct Transifex organization account
 
-2. **project-list.yml**: Contains a list of Transifex project IDs to be processed (optional)
+2. **transifex-projects.yml**: Project list configuration file (auto-generated)
+
    ```yaml
-   projects:
-      - 'o:linuxdeepin:p:deepin-desktop-environment'
-      - 'o:linuxdeepin:p:deepin-file-manager'
+   - 'o:linuxdeepin:p:deepin-desktop-environment'
+   - 'o:linuxdeepin:p:deepin-file-manager'
+   - 'o:linuxdeepin:p:deepin-calculator'
    ```
-   
-   **Purpose**:
-   - Limit the translation tool to only process the specified project list, rather than all projects under the organization
-   - If this file doesn't exist, the tool will automatically process all projects under the organization
-   - Provides project-level fine control, suitable for scenarios requiring batch processing or specific project processing
-   - Project ID format follows Transifex's organization-project hierarchy structure
+
+![企业微信截图_17497062797075](README.zh_CN.assets/17497062797075.png)
+
+**Purpose**:
+
+- **Project List Configuration**: Contains a list of Transifex project IDs to be processed
+- **Auto-generation**: In the CI process, the pipeline will read the organization name and project name from the PR (triggering /test deepin-auto-translation) and populate them into transifex-projects.yml
+- **Manual Configuration**: Users can edit this file to add projects that need processing, to extend the translation tool's processing scope
 
 **Configuration File Working Principle**:
-- When the CI process starts, it first reads `config.yml` to get organization information
-- Get all projects under that organization through the Transifex API
-- If `project-list.yml` exists, filter out the specified projects for processing
-- This design supports both full processing and precise control of specific project translation workflows
 
-### Usage Steps
+- When the CI process starts, it first reads `config.yml` to get organization information
+- Check if `transifex-projects.yml` file exists:
+  - If it exists and is not empty, use the project list directly
+  - If it doesn't exist or is empty, get all projects from Transifex API for the specified organization and auto-generate this file
+- Users can edit `transifex-projects.yml` at any time to adjust the scope of projects that need processing
+- Subsequent steps read project information from `transifex-projects.yml` to get associated GitHub resources
+
+### Usage Method
 
 1. **Update Source Files in Local Repository**  
-   First need to merge updates containing `_en.ts` and `zh_CN.ts` source files in the project's local repository. These files should be updated according to the project's `.tx/config` and `.transifex.yml` configuration, then committed to GitHub and merged into the main branch
+   First need to merge updates containing `_en.ts`, `_en_us.ts`, `zh_CN.ts`, `*.ts` source files in the project's local repository (refer to the source files configured in .tx), these files should be updated according to the project's `.tx/config` and `.transifex.yml` configuration, then committed to GitHub and merged into the main branch
 
 2. **Transifex Automatic Change Detection**  
    The Transifex platform will automatically monitor the GitHub repository, and after detecting changes in translation source files, it will analyze changes in translation completion (default translation PR trigger condition is 50% change, you can contact Wang Zichong to change this value)
 
 3. **Transifex Triggers Sync PR**  
-   After detecting changes, Transifex will automatically create a sync Pull Request to the GitHub project. The PR title format is usually: `[project-name] Updates for project Project Name #123`
+   After detecting changes, Transifex will automatically create a sync Pull Request to the GitHub project. The PR title format is usually:
+
+   `[project-name] Updates for project Project Name #123`
 
 4. **Start Automatic Translation**  
    In the PR created by Transifex, use the following command to trigger automatic translation:
-   
+
    ```bash
    /test deepin-auto-translation
    ```
-   
-   Reference: https://github.com/linuxdeepin/deepin-draw/pull/150
 
+   Note: If the pipeline fails, you can use:
+
+   ```
+   /retest
+   ```
+   
+   to restart
+   
+   **Reference: https://github.com/linuxdeepin/deepin-draw/pull/150**
+   
 5. **View Translation Results**  
    You can view specific translation details and logs in CI execution results, for example:
    [CI Execution Example](https://prow.cicd.getdeepin.org/view/s3/prow-logs/pull/linuxdeepin_deepin-draw/143/deepin-auto-translation/1927888385188302848)
@@ -368,7 +392,7 @@ graph TD
     F --> G[AI Translation Engine]
     F --> H[Simplified-Traditional Conversion Tool]
     F --> I[Minor Language Skip]
-    G --> J[Result Upload]
+    G --> J[Upload Updated Translation Files to Transifex]
     H --> J
     I --> J
     J --> K[CI Process Complete]
@@ -380,13 +404,12 @@ graph TD
 
 **Step 1: Read Configuration and Project List**  
 - Read `config.yml` to get Transifex organization information
-- Read `project-list.yml`, if it doesn't exist, process all projects
-- Get all project lists from Transifex API for the specified organization
+- Check if `transifex-projects.yml` configuration file exists:
+  - If it exists and is not empty, use the project list directly
+  - If it doesn't exist or is empty, get all projects from Transifex API for the specified organization and auto-generate this file
 
-**Step 2: Project Filtering and Resource Acquisition**  
-- Filter projects according to `project-list.yml` (if specified)
-- Generate and update `transifex-projects.yml` file
-- Get associated GitHub repository resources for all projects
+**Step 2: Project Resource Acquisition**  
+- Use the finalized project list to get associated GitHub repository resources for all projects
 
 **Step 3: Local Repository Preparation**  
 - Automatically clone or update local repositories to `repo/` directory
@@ -395,36 +418,19 @@ graph TD
 **Step 4: Translation File Processing**  
 - Automatically scan and check all translation files, identify files containing untranslated content
 - Intelligent classification processing:
-  - **Traditional Chinese files** (zh_HK, zh_TW): Process using rule-based matching
-  - **Minor language files** (such as German, Japanese, etc.): Skip, not processed by script
+  - **Traditional Chinese files**(zh_HK, zh_TW): Process using rule-based matching
+  - **Minor language files**(such as German, Japanese, etc.): Skip, not processed by script
   - **Other languages**: Use AI large language models for translation
 
 **Step 5: Upload Translation Results**  
 - Upload translated ts files to Transifex platform via `tx push` method
 
-#### Technical Implementation Features
-
-- **Fully Automated**: Complete process from repository cloning to result upload without human intervention
-- **Intelligent Language Recognition**: Automatically distinguish different languages and adopt the most suitable processing strategy  
-- **Batch Processing Optimization**: Support parallel processing of multiple projects to improve efficiency
-- **Error Recovery Mechanism**: Automatic retry for network exceptions and API limitations
-- **State Persistence**: Support resumption from breakpoints after interruption
-
 ### Notes
 
-- **Free Model Limitations**: Currently using free models for translation, the effect may not be ideal, and some content may appear with translation errors (the script has skip processing). It's recommended to use paid models in production environments to improve translation quality (additionally, SiliconFlow has 12 yuan free credit per account that can be used, most projects' first iteration involves large volumes, so paid models are recommended for better results).
-
-- **Retry Mechanism**: Some languages may fail when executing `tx push`, in which case re-executing the CI process once can solve the issue.
-
-- **Transifex Platform Status**: Transifex platform occasionally experiences slow response, causing API call failures. It's recommended to retry later.
-
-- **CI Configuration Notes**: CI configuration is based on [deepin-auto-translation/test](https://github.com/linuxdeepin/deepin-auto-translation/tree/develop/test) branch. Other projects that need to run CI should modify the corresponding yaml configuration files based on this branch.
-
-- **CI Execution Recommendations**: During initial execution, due to the large amount of content, failures may occur when running multiple project CIs simultaneously. It's recommended to execute CI in the evening for higher success rates.
-
-- Remember to use Squash merge when merging project PRs, otherwise there will be many commit records in git log.
-
-- Since AI translation of Chinese may have ambiguities, leading to deviations in traditional Chinese translation, this is why it's required to ensure Chinese translation is completed before using the script.
+- **Free Model Limitations**: Currently using free models for translation, translation quality may be suboptimal.
+- **Transifex Platform Status**: Transifex platform occasionally experiences slow response, causing API call failures. It's recommended to retry later, but the probability is very low.
+- **CI Execution Failure Handling**: CI sometimes fails due to slow network speed, in which case use /retest to restart the pipeline.
+- Project PR merging is recommended to use Squash merge, otherwise there will be many commit records in git log.
 
 ## Closed Source Project Translation Workflow
 
@@ -497,14 +503,6 @@ graph TD
 **Step 4: Result Statistics**
 - Real-time display of processing progress: `[Current/Total] Processing: Filename`
 - Generate detailed statistical reports, including successful, failed, and skipped file counts
-
-#### Technical Features
-
-- **No Platform Dependencies**: Complete local processing, no network connection to specific platforms required
-- **Intelligent Language Processing**: Different languages adopt the most suitable processing strategies
-- **Serial Processing Design**: Avoid API rate limits, improve translation stability
-- **Error Recovery Mechanism**: Automatic retry and detailed error logs
-- **File Security Protection**: Preserve original XML format, backup mechanism ensures data safety
 
 ### Differences from Open Source Project Translation Workflow
 
