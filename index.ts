@@ -98,8 +98,6 @@ async function ensureFileEncoding(filePath: string) {
 // 直接调用Translator进行翻译，跳过Transifex上传操作
 export async function translateTsFile(filePath: string, langCode: string): Promise<boolean> {
     try {
-        console.log(`直接翻译文件: ${filePath} (${langCode})`);
-        
         // 检查文件是否存在
         if (!fs.existsSync(filePath)) {
             console.error(`文件不存在: ${filePath}`);
@@ -117,12 +115,10 @@ export async function translateTsFile(filePath: string, langCode: string): Promi
                                           fileContent.match(/<translation(\s+type="unfinished"[^>]*)\s*\/>/g) !== null;
         
         if (!hasUnfinishedTranslations) {
-            console.log(`文件 ${filePath} 没有未翻译内容，跳过处理`);
             return false;
         }
         
         // 使用Translator提取并翻译内容
-        console.log(`开始处理文件: ${filePath}`);
         const translatedCount = await Translator.translateLinguistTsFile(
             selectedTranslationService,
             filePath,
@@ -130,7 +126,6 @@ export async function translateTsFile(filePath: string, langCode: string): Promi
             false
         );
         
-        console.log(`文件 ${filePath} 翻译完成，翻译了 ${translatedCount} 个字符串`);
         return translatedCount > 0;
     } catch (error) {
         console.error(`翻译文件 ${filePath} 时出错:`, error);
@@ -254,7 +249,6 @@ async function processTraditionalChineseFiles(
                                                fileContent.match(/<translation(\s+type="unfinished"[^>]*)\s*\/>/g) !== null;
                     
                     if (!hasUnfinishedTranslations) {
-                        console.log(`[繁体处理] ${fileProgress} 繁体中文文件 ${targetFilePath} 没有未翻译内容，跳过处理`);
                         skipCount++;
                         continue;
                     }

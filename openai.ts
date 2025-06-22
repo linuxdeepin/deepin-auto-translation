@@ -65,49 +65,110 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         // 对返回内容进行预处理，移除可能的Markdown代码块标记和清理内容
         let content = response.data.choices[0].message.content.replace(/```json\n?|\n?```/g, '').trim();
         
-        // 检查和修复基本的JSON格式问题
+        // 检查和修复基本的JSON格式问题 - 简化版本
         function validateAndCleanJson(str: string): string {
             try {
-                // 基础清理
-                str = str.replace(/\t/g, ' '); // 替换制表符为空格
-                str = str.replace(/\s+/g, ' '); // 合并多个空格
-                str = str.replace(/\[\]{/g, '['); // 修复开头的[]{
-                str = str.replace(/}:{/g, '},{'); // 修复}:{这样的格式
-                
-                // 移除注释
-                str = str.replace(/\/\/.*/g, '');
-                
-                // 清理属性名中的空格
-                str = str.replace(/"(\w+)\s*":/g, '"$1":');
-                
-                // 移除末尾逗号
-                str = str.replace(/,(\s*[\]}])/g, '$1');
-                
-                // 确保是数组格式
-                str = str.trim();
-                if (!str.startsWith('[')) str = '[' + str;
-                if (!str.endsWith(']')) str = str + ']';
-                
-                // 修复不完整的对象
-                str = str.replace(/({[^}]*)}?\s*$/, '$1}]');
-                
-                // 尝试解析，如果失败则进行更深层的修复
+                // 首先尝试直接解析原始内容
                 try {
                     const parsed = JSON.parse(str);
-                    return JSON.stringify(parsed); // 返回标准化的JSON字符串
+                    return JSON.stringify(parsed);
                 } catch (e) {
-                    // 提取所有完整的对象
-                    const objects = str.match(/{[^}]+}/g) || [];
-                    if (objects.length > 0) {
-                        return '[' + objects.join(',') + ']';
+                    // 如果直接解析失败，进行最小化清理
+                    let cleanedStr = str;
+                    
+                    // 移除末尾的省略号标记
+                    cleanedStr = cleanedStr.replace(/\.\.\.\s*$/, '');
+                    
+                    // 移除注释
+                    cleanedStr = cleanedStr.replace(/\/\/.*/g, '');
+                    
+                    // 清理属性名中的空格
+                    cleanedStr = cleanedStr.replace(/"(\w+)\s*":/g, '"$1":');
+                    
+                    // 修复常见的属性名错误
+                    cleanedStr = cleanedStr.replace(/"source\*\*":/g, '"source":');
+                    cleanedStr = cleanedStr.replace(/"source\*":/g, '"source":');
+                    cleanedStr = cleanedStr.replace(/"translation\*\*":/g, '"translation":');
+                    cleanedStr = cleanedStr.replace(/"translation\*":/g, '"translation":');
+                    
+                    // 移除末尾逗号
+                    cleanedStr = cleanedStr.replace(/,(\s*[\]}])/g, '$1');
+                    
+                    // 确保是数组格式
+                    cleanedStr = cleanedStr.trim();
+                    if (!cleanedStr.startsWith('[')) cleanedStr = '[' + cleanedStr;
+                    if (!cleanedStr.endsWith(']')) cleanedStr = cleanedStr + ']';
+                    
+                    // 再次尝试解析
+                    try {
+                        const parsed = JSON.parse(cleanedStr);
+                        return JSON.stringify(parsed);
+                    } catch (e2) {
+                        // 如果清理后仍然失败，使用智能对象提取
+                        const objects = extractCompleteObjects(cleanedStr);
+                        if (objects.length > 0) {
+                            return JSON.stringify(objects);
+                        }
                     }
                 }
                 
-                return str;
+                return '[]';
             } catch (error) {
-                console.error('[JSON清理] 清理JSON时发生错误:', error.message);
-                return str;
+                return '[]';
             }
+        }
+        
+        // 智能提取完整的翻译对象 - 改进版本，支持多种格式
+        function extractCompleteObjects(str: string): any[] {
+            const objects: any[] = [];
+            
+            // 尝试多种匹配模式，从严格到宽松
+            const patterns = [
+                // 标准顺序：source在前，translation在后 - 改进版本，支持转义字符
+                /{\s*"source":\s*"((?:[^"\\]|\\.)*)",\s*"translation":\s*"((?:[^"\\]|\\.)*)"\s*}/g,
+                // 颠倒顺序：translation在前，source在后 - 改进版本，支持转义字符
+                /{\s*"translation":\s*"((?:[^"\\]|\\.)*)",\s*"source":\s*"((?:[^"\\]|\\.)*)"\s*}/g,
+                // 允许中间有其他字段（非贪婪模式）- 改进版本，支持转义字符
+                /{\s*[^}]*?"source":\s*"((?:[^"\\]|\\.)*)"[^}]*?"translation":\s*"((?:[^"\\]|\\.)*)"[^}]*?}/g,
+                /{\s*[^}]*?"translation":\s*"((?:[^"\\]|\\.)*)"[^}]*?"source":\s*"((?:[^"\\]|\\.)*)"[^}]*?}/g
+            ];
+            
+            for (let i = 0; i < patterns.length; i++) {
+                const pattern = patterns[i];
+                let match;
+                while ((match = pattern.exec(str)) !== null) {
+                    let source, translation;
+                    
+                    if (i === 1 || i === 3) {
+                        // 颠倒顺序的模式：translation在match[1]，source在match[2]
+                        translation = match[1];
+                        source = match[2];
+                    } else {
+                        // 标准顺序：source在match[1]，translation在match[2]
+                        source = match[1];
+                        translation = match[2];
+                    }
+                    
+                    if (source && translation) {
+                        // 解码转义字符
+                        source = source.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                        translation = translation.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                        
+                        // 避免重复添加相同的对象
+                        const exists = objects.some(obj => obj.source === source && obj.translation === translation);
+                        if (!exists) {
+                            objects.push({ source, translation });
+                        }
+                    }
+                }
+                
+                // 如果已经找到对象，就不需要尝试更宽松的模式了
+                if (objects.length > 0) {
+                    break;
+                }
+            }
+            
+            return objects;
         }
         
         // 清理和验证JSON
@@ -121,6 +182,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             // 检查数组格式
             if (!Array.isArray(parsedContent)) {
                 console.error('[错误] 响应格式错误: 不是数组格式');
+                console.error(`[处理结果] 由于响应格式错误，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
                 return;
             }
 
@@ -136,7 +198,11 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             console.log('[翻译] 开始处理...');
             
             // 验证翻译质量的辅助函数
-            function isValidTranslation(source: string, translation: string): { valid: boolean; reason?: string } {
+            function isEnglishVariant(lang: string) {
+                return ['en', 'en_AU', 'en_GB', 'en_CA', 'en_US'].includes(lang);
+            }
+            // 验证翻译质量的辅助函数
+            function isValidTranslation(source: string, translation: string, targetLanguage: string): { valid: boolean; reason?: string } {
                 // 检查基本有效性
                 if (!translation || typeof translation !== 'string') {
                     return { valid: false, reason: '翻译内容为空或格式错误' };
@@ -181,6 +247,41 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                     return { valid: false, reason: '翻译内容过短，可能不完整' };
                 }
 
+                // 检查是否混入其他语言字符（特别是中文和英文）
+                const chineseChars = /[\u4e00-\u9fff]/;  // 中文字符
+                const englishChars = /[a-zA-Z]/;  // 英文字符
+                
+                // 对于非中文语言，检查是否混入中文字符
+                if (!['zh_CN', 'zh_TW', 'zh_HK'].includes(targetLanguage) && chineseChars.test(translation)) {
+                    return { valid: false, reason: '翻译结果混入了中文字符，不符合目标语言要求' };
+                }
+                
+                // 对于非英文语言，检查是否混入过多英文字符（允许少量专有名词）
+                // if (!isEnglishVariant(targetLanguage) && englishChars.test(translation)) {
+                //     // 计算英文字符的比例
+                //     const englishCharCount = (translation.match(/[a-zA-Z]/g) || []).length;
+                //     const totalCharCount = translation.replace(/\s/g, '').length;
+                //     if (totalCharCount > 0 && englishCharCount / totalCharCount > 0.3) {
+                //         return { valid: false, reason: '翻译结果混入了过多英文字符，可能不符合目标语言要求' };
+                //     }
+                // }
+
+                // 只有非英语变体才做以下检测
+                if (!isEnglishVariant(targetLanguage)) {
+                    // 检查翻译是否与原文完全相同（忽略大小写和空格）
+                    const normalizedSource = source.toLowerCase().replace(/\s+/g, ' ').trim();
+                    const normalizedTranslation = trimmedTranslation.toLowerCase().replace(/\s+/g, ' ').trim();
+                    if (normalizedSource === normalizedTranslation) {
+                        return { valid: false, reason: '翻译内容与原文相同，可能是专有名词或无需翻译的内容' };
+                    }
+                }
+
+                // 检查翻译是否包含明显的标点符号（可能是原文未翻译）
+                const punctuation = /[.,;:!?()[\]{}"'`~@#$%^&*+=|\\/<>]/;
+                if (punctuation.test(trimmedTranslation) && !punctuation.test(source)) {
+                    return { valid: false, reason: '翻译内容包含标点符号，可能是原文未翻译' };
+                }
+
                 // 其他情况都认为是有效的翻译
                 return { valid: true };
             }
@@ -222,7 +323,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                     }
 
                     // 检查翻译质量
-                    const qualityCheck = isValidTranslation(sourceText, translation.translation);
+                    const qualityCheck = isValidTranslation(sourceText, translation.translation, targetLanguage);
                     if (!qualityCheck.valid) {
                         // 保留质量问题的详细输出
                         console.log(`[条目 ${i+1}/${messages.length}] ⚠️ 质量问题`);

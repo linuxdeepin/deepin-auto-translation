@@ -14,15 +14,16 @@ const selectedTranslationService = OpenAI.fetchTranslations;
 // 定义小语种列表
 const MINOR_LANGUAGES = {
     'es': '西班牙语',
-    'it': '意大利语', 
+    'it': '意大利语',
     'de': '德语',
     'de_DE': '德语',
     'ja': '日语',
     'uk': '乌克兰语',
     'pt_BR': '巴西葡萄牙语',
-    'sq': '阿尔巴尼亚语'
+    'sq': '阿尔巴尼亚语',
+    'zh_CN': '简体中文',
+    'pl': '波兰语'
 };
-
 // 记录简体中文文件路径，用于后续处理繁体中文
 const zhCNFilePaths = new Map<string, string>();
 
@@ -32,8 +33,6 @@ const zhCNFilePaths = new Map<string, string>();
  */
 async function translateTsFile(filePath: string, langCode: string): Promise<{status: 'success'|'no_need'|'failed', translatedCount?: number, message?: string}> {
     try {
-        console.log(`直接翻译文件: ${filePath} (${langCode})`);
-        
         // 检查文件是否存在
         if (!fs.existsSync(filePath)) {
             const errorMsg = `文件不存在: ${filePath}`;
@@ -49,12 +48,10 @@ async function translateTsFile(filePath: string, langCode: string): Promise<{sta
         const hasUnfinished = hasUnfinishedTranslations(fileContent);
         
         if (!hasUnfinished) {
-            console.log(`文件 ${filePath} 没有未翻译内容，无需翻译`);
             return {status: 'no_need', message: '没有未翻译内容'};
         }
         
         // 使用Translator提取并翻译内容
-        console.log(`开始处理文件: ${filePath}`);
         const translatedCount = await Translator.translateLinguistTsFile(
             selectedTranslationService,
             filePath,
@@ -62,7 +59,6 @@ async function translateTsFile(filePath: string, langCode: string): Promise<{sta
             false
         );
         
-        console.log(`文件 ${filePath} 翻译完成，翻译了 ${translatedCount} 个字符串`);
         if (translatedCount > 0) {
             return {status: 'success', translatedCount, message: `翻译了 ${translatedCount} 个字符串`};
         } else {
@@ -123,7 +119,6 @@ async function processTraditionalChineseFile(
         const hasUnfinished = hasUnfinishedTranslations(fileContent);
         
         if (!hasUnfinished) {
-            console.log(`[繁体处理] 繁体中文文件没有未翻译内容，无需处理: ${targetFilePath}`);
             return {status: 'no_need', message: '没有未翻译内容'};
         }
         
@@ -229,7 +224,7 @@ function findTsFiles(dir: string): string[] {
     
     function findRecursively(currentDir: string) {
         try {
-            console.log(`扫描目录: ${currentDir}`);
+            // console.log(`扫描目录: ${currentDir}`);
             const entries = fs.readdirSync(currentDir, { withFileTypes: true });
             
             for (const entry of entries) {
@@ -240,10 +235,10 @@ function findTsFiles(dir: string): string[] {
                     if (entry.name !== 'node_modules' && entry.name !== '.git') {
                         findRecursively(fullPath);
                     } else {
-                        console.log(`跳过目录: ${fullPath}`);
+                        // console.log(`跳过目录: ${fullPath}`);
                     }
                 } else if (entry.isFile() && entry.name.endsWith('.ts')) {
-                    console.log(`找到ts文件: ${fullPath}`);
+                    // console.log(`找到ts文件: ${fullPath}`);
                     results.push(fullPath);
                 }
             }
@@ -275,6 +270,11 @@ function findTsFiles(dir: string): string[] {
  * @returns 语言代码或null（如果不匹配）
  */
 function extractLanguageCode(filename: string): string | null {
+    // 首先检查文件名是否包含下划线，避免处理类似 dde-introduction.ts 的文件
+    if (!filename.includes('_')) {
+        return null;
+    }
+    
     // 使用更宽松的正则表达式，支持：
     // 1. 2-3个字母的语言代码
     // 2. 带地区的语言代码（如af_ZA）
@@ -316,6 +316,7 @@ function isFileExcluded(filePath: string, excludeFiles: string[]): boolean {
  * @param processedFiles 已处理文件集合
  * @param filesToTranslate 待翻译文件列表
  * @param excludeFiles 要排除的文件列表
+ * @param encounteredMinorLanguages 已遇到的小语种集合
  * @returns 是否成功处理
  */
 function processTsFile(
@@ -323,7 +324,8 @@ function processTsFile(
     langCode: string,
     processedFiles: Set<string>,
     filesToTranslate: { file: string; langCode: string; isTraditionalChinese?: boolean }[],
-    excludeFiles: string[] = []
+    excludeFiles: string[] = [],
+    encounteredMinorLanguages: Set<string>
 ): boolean {
     // 如果文件已经处理过，跳过
     if (processedFiles.has(tsFile)) {
@@ -339,7 +341,6 @@ function processTsFile(
     
     // 检查是否为繁体中文
     if (['zh_HK', 'zh_TW'].includes(langCode)) {
-        console.log(`  - ${tsFile} (当前文件为简繁体转换文件，采用规则库匹配方式处理)`);
         filesToTranslate.push({
             file: tsFile,
             langCode,
@@ -350,12 +351,11 @@ function processTsFile(
 
     // 检查是否为小语种
     if (langCode in MINOR_LANGUAGES) {
-        console.log(`  - ${tsFile} (${MINOR_LANGUAGES[langCode]}小语种，跳过不由脚本处理)`);
+        encounteredMinorLanguages.add(langCode);
         return true;
     }
 
     // 其他语种添加到待翻译列表
-    console.log(`  - ${tsFile} (需要基于AI大模型进行翻译)`);
     filesToTranslate.push({
         file: tsFile,
         langCode
@@ -374,6 +374,7 @@ export async function processClosedSourceProject(projectPath: string, excludeFil
     const filesToTranslate: { file: string; langCode: string; isTraditionalChinese?: boolean }[] = [];
     let totalFilesFound = 0;
     const processedFiles = new Set<string>();
+    const encounteredMinorLanguages = new Set<string>();
     
     // 清空简体中文文件路径记录
     zhCNFilePaths.clear();
@@ -465,7 +466,7 @@ export async function processClosedSourceProject(projectPath: string, excludeFil
             const langCode = extractLanguageCode(basename);
             
             if (!langCode) {
-                console.log(`  跳过文件 ${file} - 不符合命名格式要求`);
+                console.log(`  跳过源文件 ${file} - 这是源文件，不是翻译文件`);
                 continue;
             }
             
@@ -477,12 +478,10 @@ export async function processClosedSourceProject(projectPath: string, excludeFil
         // 处理每个匹配的ts文件
         for (const { file: tsFile, langCode } of matchingTsFiles) {
             const fullPath = path.join(projectPath, tsFile);
-            console.log(`\n处理文件: ${tsFile} (语言: ${langCode})`);
             
             // 检查文件是否存在未翻译内容
             try {
                 if (!fs.existsSync(fullPath)) {
-                    console.log(`  - 文件不存在，跳过`);
                     continue;
                 }
                 
@@ -491,18 +490,15 @@ export async function processClosedSourceProject(projectPath: string, excludeFil
                 const hasUnfinished = hasUnfinishedTranslations(fileContent);
                 
                 if (!hasUnfinished) {
-                    console.log(`  - 没有未翻译内容，跳过`);
                     continue;
                 }
-                
-                console.log(`  - 检测到未翻译内容，开始处理`);
             } catch (error) {
-                console.error(`  - 读取文件时出错:`, error);
+                console.error(`读取文件时出错: ${tsFile}`, error);
                 continue;
             }
             
             // 处理ts文件
-            if (processTsFile(fullPath, langCode, processedFiles, filesToTranslate, excludeFiles)) {
+            if (processTsFile(fullPath, langCode, processedFiles, filesToTranslate, excludeFiles, encounteredMinorLanguages)) {
                 totalFilesFound++;
             }
         }
@@ -515,11 +511,27 @@ export async function processClosedSourceProject(projectPath: string, excludeFil
             // 计算小语种文件数量(不需要处理的文件)
             const skipFilesCount = totalFilesFound - filesToTranslate.length;
             
+            // 收集各类型的语种
+            const aiTranslateLanguages = filesToTranslate
+                .filter(item => !(['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese))
+                .map(item => item.langCode);
+            const traditionalLanguages = filesToTranslate
+                .filter(item => ['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese)
+                .map(item => item.langCode);
+            
             console.log(`\n========== 统计信息 ==========`);
             console.log(`共找到 ${totalFilesFound} 个需要处理的翻译文件，其中：`);
-            console.log(`  - ${filesToTranslate.length - traditionalFilesCount} 个需要AI翻译`);
-            console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理`);
-            console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理`);
+            console.log(`  - ${filesToTranslate.length - traditionalFilesCount} 个需要AI翻译 (${aiTranslateLanguages.join(', ')})`);
+            if (traditionalFilesCount > 0) {
+                console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理 (${traditionalLanguages.join(', ')})`);
+            } else {
+                console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理`);
+            }
+            if (skipFilesCount > 0) {
+                console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理 (${Array.from(encounteredMinorLanguages).join(', ')})`);
+            } else {
+                console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理`);
+            }
             
             // 输出所有待翻译的文件
             console.log(`\n========== 待翻译文件列表 ==========`);
@@ -627,7 +639,7 @@ export async function translateClosedSourceProject(
             failedLanguages.add(fileInfo.langCode);
         }
     }
-    
+
     console.log(`\n所有 ${nonTraditionalFiles.length} 个非繁体中文文件处理完成`);
     console.log(`  - 翻译成功: ${successCount} 个`);
     console.log(`  - 无需翻译: ${noNeedCount} 个`);

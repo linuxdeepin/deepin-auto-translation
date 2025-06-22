@@ -104,6 +104,7 @@ function syncTranslationsFromTransifex(repository: string, repoPath: string) {
  * @param repoPath 仓库路径
  * @param processedFiles 已处理文件集合
  * @param filesToTranslate 待翻译文件列表
+ * @param encounteredMinorLanguages 遇到的小语种集合
  * @returns 是否成功处理
  */
 function processTsFile(
@@ -112,7 +113,8 @@ function processTsFile(
     resource: any, 
     repoPath: string, 
     processedFiles: Set<string>,
-    filesToTranslate: { file: string; langCode: string; resource: any; repoPath: string; isTraditionalChinese?: boolean }[]
+    filesToTranslate: { file: string; langCode: string; resource: any; repoPath: string; isTraditionalChinese?: boolean }[],
+    encounteredMinorLanguages: Set<string>
 ): boolean {
     // 如果文件已经处理过，跳过
     if (processedFiles.has(tsFile)) {
@@ -122,7 +124,6 @@ function processTsFile(
     
     // 检查是否为繁体中文
     if (['zh_HK', 'zh_TW'].includes(langCode)) {
-        console.log(`  - ${tsFile} (当前文件为简繁体转换文件，采用规则库匹配方式处理)`);
         filesToTranslate.push({
             file: tsFile,
             langCode,
@@ -135,12 +136,11 @@ function processTsFile(
 
     // 检查是否为小语种
     if (langCode in MINOR_LANGUAGES) {
-        console.log(`  - ${tsFile} (${MINOR_LANGUAGES[langCode]}小语种，跳过不由脚本处理)`);
+        encounteredMinorLanguages.add(langCode);
         return true;
     }
 
     // 其他语种添加到待翻译列表
-    console.log(`  - ${tsFile} (需要基于AI大模型进行翻译)`);
     filesToTranslate.push({
         file: tsFile,
         langCode,
@@ -186,7 +186,7 @@ function findTsFiles(dir: string): string[] {
     
     function findRecursively(currentDir: string) {
         try {
-            console.log(`扫描目录: ${currentDir}`);
+            // console.log(`扫描目录: ${currentDir}`);
             const entries = fs.readdirSync(currentDir, { withFileTypes: true });
             
             for (const entry of entries) {
@@ -197,10 +197,10 @@ function findTsFiles(dir: string): string[] {
                     if (entry.name !== 'node_modules' && entry.name !== '.git') {
                         findRecursively(fullPath);
                     } else {
-                        console.log(`跳过目录: ${fullPath}`);
+                        // console.log(`跳过目录: ${fullPath}`);
                     }
                 } else if (entry.isFile() && entry.name.endsWith('.ts')) {
-                    console.log(`找到ts文件: ${fullPath}`);
+                    // console.log(`找到ts文件: ${fullPath}`);
                     results.push(fullPath);
                 }
             }
@@ -258,6 +258,7 @@ export async function processAllTsFiles() {
     const filesToTranslate: { file: string; langCode: string; resource: any; repoPath: string; isTraditionalChinese?: boolean }[] = [];
     let totalFilesFound = 0;
     const processedFiles = new Set<string>();
+    const encounteredMinorLanguages = new Set<string>();
     
     try {
         // 从 YAML 文件中读取所有项目信息
@@ -346,7 +347,7 @@ export async function processAllTsFiles() {
                 const langCode = extractLanguageCode(basename);
                 
                 if (!langCode) {
-                    console.log(`  跳过文件 ${file} - 不符合命名格式要求`);
+                    console.log(`  跳过源文件 ${file} - 这是源文件，不是翻译文件`);
                     continue;
                 }
                 
@@ -359,12 +360,10 @@ export async function processAllTsFiles() {
             // 处理每个匹配的ts文件
             for (const { file: tsFile, langCode } of matchingTsFiles) {
                 const fullPath = path.join(repoPath, tsFile);
-                console.log(`\n处理文件: ${tsFile} (语言: ${langCode})`);
                 
                 // 检查文件是否存在未翻译内容
                 try {
                     if (!fs.existsSync(fullPath)) {
-                        console.log(`  - 文件不存在，跳过`);
                         continue;
                     }
                     
@@ -373,18 +372,15 @@ export async function processAllTsFiles() {
                     const hasUnfinished = hasUnfinishedTranslations(fileContent);
                     
                     if (!hasUnfinished) {
-                        console.log(`  - 没有未翻译内容，跳过`);
                         continue;
                     }
-                    
-                    console.log(`  - 检测到未翻译内容，开始处理`);
                 } catch (error) {
-                    console.error(`  - 读取文件时出错:`, error);
+                    console.error(`读取文件时出错: ${tsFile}`, error);
                     continue;
                 }
                 
                 // 处理ts文件
-                if (processTsFile(tsFile, langCode, resource, repoPath, processedFiles, filesToTranslate)) {
+                if (processTsFile(tsFile, langCode, resource, repoPath, processedFiles, filesToTranslate, encounteredMinorLanguages)) {
                     totalFilesFound++;
                 }
             }
@@ -398,11 +394,27 @@ export async function processAllTsFiles() {
             // 计算小语种文件数量(不需要处理的文件)
             const skipFilesCount = totalFilesFound - filesToTranslate.length;
             
+            // 收集各类型的语种
+            const aiTranslateLanguages = filesToTranslate
+                .filter(item => !(['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese))
+                .map(item => item.langCode);
+            const traditionalLanguages = filesToTranslate
+                .filter(item => ['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese)
+                .map(item => item.langCode);
+            
             console.log(`\n========== 统计信息 ==========`);
             console.log(`共找到 ${totalFilesFound} 个需要处理的翻译文件，其中：`);
-            console.log(`  - ${filesToTranslate.length - traditionalFilesCount} 个需要AI翻译`);
-            console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理`);
-            console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理`);
+            console.log(`  - ${filesToTranslate.length - traditionalFilesCount} 个需要AI翻译 (${aiTranslateLanguages.join(', ')})`);
+            if (traditionalFilesCount > 0) {
+                console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理 (${traditionalLanguages.join(', ')})`);
+            } else {
+                console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理`);
+            }
+            if (skipFilesCount > 0) {
+                console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理 (${Array.from(encounteredMinorLanguages).join(', ')})`);
+            } else {
+                console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理`);
+            }
             
             // 输出所有待翻译的文件
             console.log(`\n========== 待翻译文件列表 ==========`);

@@ -55,11 +55,118 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         // 在解析 JSON 之前，先移除响应内容中可能存在的 Markdown 代码块标记（```json 和 ```）。
         const content = response.data.choices[0].message.content.replace(/```json\n?|\n?```/g, '').trim();
         
+        // 检查和修复基本的JSON格式问题 - 改进版本，支持截断JSON修复
+        function validateAndCleanJson(str: string): string {
+            try {
+                // 1. 移除末尾的省略号标记（处理截断的JSON）
+                str = str.replace(/\.\.\.\s*$/, '');
+                
+                // 2. 基础清理
+                str = str.replace(/\t/g, ' '); // 替换制表符为空格
+                str = str.replace(/\s+/g, ' '); // 合并多个空格
+                str = str.replace(/\[\]{/g, '['); // 修复开头的[]{
+                str = str.replace(/}:{/g, '},{'); // 修复}:{这样的格式
+                
+                // 移除注释
+                str = str.replace(/\/\/.*/g, '');
+                
+                // 清理属性名中的空格
+                str = str.replace(/"(\w+)\s*":/g, '"$1":');
+                
+                // 修复常见的属性名错误
+                str = str.replace(/"source\*\*":/g, '"source":');
+                str = str.replace(/"source\*":/g, '"source":');
+                str = str.replace(/"translation\*\*":/g, '"translation":');
+                str = str.replace(/"translation\*":/g, '"translation":');
+                
+                // 移除末尾逗号
+                str = str.replace(/,(\s*[\]}])/g, '$1');
+                
+                // 确保是数组格式
+                str = str.trim();
+                if (!str.startsWith('[')) str = '[' + str;
+                if (!str.endsWith(']')) str = str + ']';
+                
+                // 3. 首先尝试直接解析
+                try {
+                    const parsed = JSON.parse(str);
+                    return JSON.stringify(parsed);
+                } catch (e) {
+                    // 如果直接解析失败，使用智能对象提取
+                    console.log('[JSON清理] 直接解析失败，使用智能提取...');
+                    const objects = extractCompleteObjects(str);
+                    if (objects.length > 0) {
+                        return JSON.stringify(objects);
+                    }
+                }
+                
+                return '[]';
+            } catch (error) {
+                console.error('[JSON清理] 清理JSON时发生错误:', error.message);
+                return '[]';
+            }
+        }
+        
+        // 智能提取完整的翻译对象 - 改进版本，支持多种格式
+        function extractCompleteObjects(str: string): any[] {
+            const objects: any[] = [];
+            
+            // 尝试多种匹配模式，从严格到宽松
+            const patterns = [
+                // 标准顺序：source在前，translation在后
+                /{\s*"source":\s*"([^"]*)",\s*"translation":\s*"([^"]*)"\s*}/g,
+                // 颠倒顺序：translation在前，source在后
+                /{\s*"translation":\s*"([^"]*)",\s*"source":\s*"([^"]*)"\s*}/g,
+                // 允许中间有其他字段（非贪婪模式）
+                /{\s*[^}]*?"source":\s*"([^"]*)"[^}]*?"translation":\s*"([^"]*)"[^}]*?}/g,
+                /{\s*[^}]*?"translation":\s*"([^"]*)"[^}]*?"source":\s*"([^"]*)"[^}]*?}/g
+            ];
+            
+            for (let i = 0; i < patterns.length; i++) {
+                const pattern = patterns[i];
+                let match;
+                while ((match = pattern.exec(str)) !== null) {
+                    let source, translation;
+                    
+                    if (i === 1 || i === 3) {
+                        // 颠倒顺序的模式：translation在match[1]，source在match[2]
+                        translation = match[1];
+                        source = match[2];
+                    } else {
+                        // 标准顺序：source在match[1]，translation在match[2]
+                        source = match[1];
+                        translation = match[2];
+                    }
+                    
+                    if (source && translation) {
+                        // 避免重复添加相同的对象
+                        const exists = objects.some(obj => obj.source === source && obj.translation === translation);
+                        if (!exists) {
+                            objects.push({ source, translation });
+                        }
+                    }
+                }
+                
+                // 如果已经找到对象，就不需要尝试更宽松的模式了
+                if (objects.length > 0) {
+                    break;
+                }
+            }
+            
+            console.log('[JSON清理] 提取到', objects.length, '个完整对象');
+            return objects;
+        }
+        
+        // 清理和验证JSON
+        const originalContent = content;
+        const cleanedContent = validateAndCleanJson(content);
+        
         try {
-            const responsedTranslations = JSON.parse(content);
+            const responsedTranslations = JSON.parse(cleanedContent);
             
             if (!Array.isArray(responsedTranslations)) {
                 console.error('[错误] 响应格式错误: 不是数组格式');
+                console.error(`[处理结果] 由于响应格式错误，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
                 return;
             }
 
