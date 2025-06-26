@@ -7,6 +7,7 @@ import process from 'process';
 import * as Translator from './translator';
 import * as OpenAI from './openai';
 import { execSync } from 'child_process';
+import { ParallelConfig, getParallelConfig, printParallelConfig } from './parallel-config';
 
 // 选择翻译服务 - 直接使用OpenAI，避免导入index.ts
 const selectedTranslationService = OpenAI.fetchTranslations;
@@ -24,6 +25,86 @@ const MINOR_LANGUAGES = {
     'zh_CN': '简体中文',
     'pl': '波兰语'
 };
+
+// 定义需要检测的语种列表
+const REQUIRED_LANGUAGES = [
+    "ady",
+    "af",
+    "am_ET",
+    "ar",
+    "ast",
+    "az",
+    "bg",
+    "bn",
+    "bo",
+    "bqi",
+    "br",
+    "ca",
+    "cs",
+    "da",
+    "de",
+    "el",
+    "en_AU",
+    "eo",
+    "es",
+    "et",
+    "eu",
+    "fa",
+    "fi",
+    "fil",
+    "fr",
+    "gl_ES",
+    "he",
+    "hi_IN",
+    "hr",
+    "hu",
+    "hy",
+    "id",
+    "it",
+    "ja",
+    "ka",
+    "km_KH",
+    "kn_IN",
+    "ko",
+    "ku",
+    "ku_IQ",
+    "ky",
+    "lt",
+    "ml",
+    "mn",
+    "mr",
+    "ms",
+    "my",
+    "nb",
+    "ne",
+    "nl",
+    "pam",
+    "pl",
+    "pt",
+    "pt_BR",
+    "ro",
+    "ru",
+    "sc",
+    "si",
+    "sk",
+    "sl",
+    "sq",
+    "sr",
+    "sv",
+    "sw",
+    "ta",
+    "th",
+    "tr",
+    "tzm",
+    "ug",
+    "uk",
+    "ur",
+    "vi",
+    "zh_CN",
+    "zh_HK",
+    "zh_TW"
+];
+
 // 记录简体中文文件路径，用于后续处理繁体中文
 const zhCNFilePaths = new Map<string, string>();
 
@@ -364,6 +445,94 @@ function processTsFile(
 }
 
 /**
+ * 并行处理翻译文件
+ */
+async function translateFilesInParallel(
+    files: { file: string; langCode: string; isTraditionalChinese?: boolean }[],
+    parallelConfig: ParallelConfig
+): Promise<{
+    successCount: number;
+    noNeedCount: number;
+    failCount: number;
+    successLanguages: Set<string>;
+    noNeedLanguages: Set<string>;
+    failedLanguages: Set<string>;
+}> {
+    const maxConcurrentFiles = parallelConfig.MAX_CONCURRENT_FILES;
+    
+    let successCount = 0;
+    let noNeedCount = 0;
+    let failCount = 0;
+    const failedLanguages = new Set<string>();
+    const successLanguages = new Set<string>();
+    const noNeedLanguages = new Set<string>();
+    
+    console.log(`[并行处理] 开始处理 ${files.length} 个翻译文件，最大并发数: ${maxConcurrentFiles}`);
+    
+    // 创建文件处理函数
+    const processFile = async (fileInfo: { file: string; langCode: string; isTraditionalChinese?: boolean }, index: number): Promise<void> => {
+        try {
+            console.log(`[并行处理] [${index + 1}/${files.length}] 开始翻译: ${fileInfo.file} (${fileInfo.langCode})`);
+            
+            const result = await translateTsFile(fileInfo.file, fileInfo.langCode);
+            
+            if (result.status === 'success') {
+                console.log(`[并行处理] [${index + 1}/${files.length}] 翻译成功: ${result.message}`);
+                successCount++;
+                successLanguages.add(fileInfo.langCode);
+                
+                // 如果是简体中文文件，记录路径用于后续处理繁体中文
+                if (fileInfo.langCode === 'zh_CN') {
+                    const baseFileName = path.basename(fileInfo.file).replace(/_zh_CN\.ts$/, '');
+                    zhCNFilePaths.set(baseFileName, fileInfo.file);
+                }
+            } else if (result.status === 'no_need') {
+                console.log(`[并行处理] [${index + 1}/${files.length}] 无需翻译: ${result.message}`);
+                noNeedCount++;
+                noNeedLanguages.add(fileInfo.langCode);
+                
+                // 即使无需翻译，如果是简体中文文件也要记录路径
+                if (fileInfo.langCode === 'zh_CN') {
+                    const baseFileName = path.basename(fileInfo.file).replace(/_zh_CN\.ts$/, '');
+                    zhCNFilePaths.set(baseFileName, fileInfo.file);
+                }
+            } else {
+                console.log(`[并行处理] [${index + 1}/${files.length}] 翻译失败: ${result.message}`);
+                failCount++;
+                failedLanguages.add(fileInfo.langCode);
+            }
+        } catch (error) {
+            console.error(`[并行处理] [${index + 1}/${files.length}] 处理文件时出错:`, error);
+            failCount++;
+            failedLanguages.add(fileInfo.langCode);
+        }
+    };
+    
+    // 使用并发限制处理文件
+    for (let i = 0; i < files.length; i += maxConcurrentFiles) {
+        const currentFiles = files.slice(i, i + maxConcurrentFiles);
+        const filePromises = currentFiles.map((fileInfo, index) => 
+            processFile(fileInfo, i + index)
+        );
+        
+        console.log(`[并行处理] 并行处理第 ${i + 1}-${Math.min(i + maxConcurrentFiles, files.length)} 个文件`);
+        
+        await Promise.all(filePromises);
+        
+        console.log(`[并行处理] 翻译文件 ${Math.min(i + maxConcurrentFiles, files.length)}/${files.length} 完成`);
+    }
+    
+    return {
+        successCount,
+        noNeedCount,
+        failCount,
+        successLanguages,
+        noNeedLanguages,
+        failedLanguages
+    };
+}
+
+/**
  * 处理闭源项目中的所有 ts 文件
  * 
  * @param projectPath 本地项目路径
@@ -414,6 +583,10 @@ export async function processClosedSourceProject(projectPath: string, excludeFil
         
         if (fs.existsSync(translationsDir)) {
             console.log(`检测到translations目录，优先从该目录查找ts文件`);
+            
+            // 检测并创建缺失的语种文件
+            await ensureLanguageFiles(translationsDir);
+            
             tsFilePaths = findTsFiles(translationsDir);
             console.log(`在translations目录中找到${tsFilePaths.length}个ts文件`);
         }
@@ -564,6 +737,10 @@ export async function translateClosedSourceProject(
     console.log(`\n========== 开始翻译闭源项目 ==========`);
     console.log(`项目路径: ${projectPath}`);
     
+    // 获取并行配置并打印信息
+    const parallelConfig = getParallelConfig();
+    printParallelConfig(parallelConfig);
+    
     // 首先扫描项目获取待翻译文件
     const filesToTranslate = await processClosedSourceProject(projectPath, excludeFiles);
     
@@ -599,51 +776,71 @@ export async function translateClosedSourceProject(
     
     // 第一步：处理所有非繁体中文文件（包括简体中文和其他语言）
     console.log('\n===== 步骤1：处理非繁体中文文件 =====');
-    console.log(`📝 开始串行处理 ${nonTraditionalFiles.length} 个翻译文件...`);
     
-    for (let i = 0; i < nonTraditionalFiles.length; i++) {
-        const fileInfo = nonTraditionalFiles[i];
-        console.log(`\n[${i+1}/${nonTraditionalFiles.length}] 正在翻译: ${fileInfo.file} (${fileInfo.langCode})`);
-        
-        try {
-            const result = await translateTsFile(fileInfo.file, fileInfo.langCode);
+    if (nonTraditionalFiles.length > 0) {
+        if (parallelConfig.ENABLE_PARALLEL && nonTraditionalFiles.length > 1) {
+            // 使用并行处理
+            console.log(`📝 开始并行处理 ${nonTraditionalFiles.length} 个翻译文件...`);
+            const result = await translateFilesInParallel(nonTraditionalFiles, parallelConfig);
             
-            if (result.status === 'success') {
-                console.log(`  - 翻译成功: ${result.message}`);
-                successCount++;
-                successLanguages.add(fileInfo.langCode);
+            successCount += result.successCount;
+            noNeedCount += result.noNeedCount;
+            failCount += result.failCount;
+            
+            result.successLanguages.forEach(lang => successLanguages.add(lang));
+            result.noNeedLanguages.forEach(lang => noNeedLanguages.add(lang));
+            result.failedLanguages.forEach(lang => failedLanguages.add(lang));
+        } else {
+            // 使用串行处理
+            console.log(`📝 开始串行处理 ${nonTraditionalFiles.length} 个翻译文件...`);
+            
+            for (let i = 0; i < nonTraditionalFiles.length; i++) {
+                const fileInfo = nonTraditionalFiles[i];
+                console.log(`\n[${i+1}/${nonTraditionalFiles.length}] 正在翻译: ${fileInfo.file} (${fileInfo.langCode})`);
                 
-                // 如果是简体中文文件，记录路径用于后续处理繁体中文
-                if (fileInfo.langCode === 'zh_CN') {
-                    const baseFileName = path.basename(fileInfo.file).replace(/_zh_CN\.ts$/, '');
-                    zhCNFilePaths.set(baseFileName, fileInfo.file);
+                try {
+                    const result = await translateTsFile(fileInfo.file, fileInfo.langCode);
+                    
+                    if (result.status === 'success') {
+                        console.log(`  - 翻译成功: ${result.message}`);
+                        successCount++;
+                        successLanguages.add(fileInfo.langCode);
+                        
+                        // 如果是简体中文文件，记录路径用于后续处理繁体中文
+                        if (fileInfo.langCode === 'zh_CN') {
+                            const baseFileName = path.basename(fileInfo.file).replace(/_zh_CN\.ts$/, '');
+                            zhCNFilePaths.set(baseFileName, fileInfo.file);
+                        }
+                    } else if (result.status === 'no_need') {
+                        console.log(`  - 无需翻译: ${result.message}`);
+                        noNeedCount++;
+                        noNeedLanguages.add(fileInfo.langCode);
+                        
+                        // 即使无需翻译，如果是简体中文文件也要记录路径
+                        if (fileInfo.langCode === 'zh_CN') {
+                            const baseFileName = path.basename(fileInfo.file).replace(/_zh_CN\.ts$/, '');
+                            zhCNFilePaths.set(baseFileName, fileInfo.file);
+                        }
+                    } else {
+                        console.log(`  - 翻译失败: ${result.message}`);
+                        failCount++;
+                        failedLanguages.add(fileInfo.langCode);
+                    }
+                } catch (error) {
+                    console.error(`  - 处理文件时出错:`, error);
+                    failCount++;
+                    failedLanguages.add(fileInfo.langCode);
                 }
-            } else if (result.status === 'no_need') {
-                console.log(`  - 无需翻译: ${result.message}`);
-                noNeedCount++;
-                noNeedLanguages.add(fileInfo.langCode);
-                
-                // 即使无需翻译，如果是简体中文文件也要记录路径
-                if (fileInfo.langCode === 'zh_CN') {
-                    const baseFileName = path.basename(fileInfo.file).replace(/_zh_CN\.ts$/, '');
-                    zhCNFilePaths.set(baseFileName, fileInfo.file);
-                }
-            } else {
-                console.log(`  - 翻译失败: ${result.message}`);
-                failCount++;
-                failedLanguages.add(fileInfo.langCode);
             }
-        } catch (error) {
-            console.error(`  - 处理文件时出错:`, error);
-            failCount++;
-            failedLanguages.add(fileInfo.langCode);
         }
+        
+        console.log(`\n所有 ${nonTraditionalFiles.length} 个非繁体中文文件处理完成`);
+        console.log(`  - 翻译成功: ${successCount} 个`);
+        console.log(`  - 无需翻译: ${noNeedCount} 个`);
+        console.log(`  - 翻译失败: ${failCount} 个`);
+    } else {
+        console.log('没有需要处理的非繁体中文文件');
     }
-
-    console.log(`\n所有 ${nonTraditionalFiles.length} 个非繁体中文文件处理完成`);
-    console.log(`  - 翻译成功: ${successCount} 个`);
-    console.log(`  - 无需翻译: ${noNeedCount} 个`);
-    console.log(`  - 翻译失败: ${failCount} 个`);
     
     // 第二步：处理繁体中文文件
     console.log('\n===== 步骤2：处理繁体中文文件 =====');
@@ -719,6 +916,375 @@ export async function translateClosedSourceProject(
     // console.log(`\n注意: 闭源项目翻译完成后不会自动提交到版本控制或Transifex平台`);
 }
 
+/**
+ * 从单个ts文件中提取所有translation内容
+ * @param filePath ts文件路径
+ * @returns 提取到的翻译内容数组
+ */
+function extractTranslationsFromFile(filePath: string): {
+    source: string;
+    translation: string;
+    context: string;
+    comment?: string;
+    location?: string;
+    isUnfinished: boolean;
+}[] {
+    const translations: {
+        source: string;
+        translation: string;
+        context: string;
+        comment?: string;
+        location?: string;
+        isUnfinished: boolean;
+    }[] = [];
+
+    try {
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const { DOMParser } = require('@xmldom/xmldom');
+        const doc = new DOMParser().parseFromString(fileContent, 'application/xml');
+
+        if (!doc || !doc.getElementsByTagName) {
+            console.warn(`无法解析文件: ${filePath}`);
+            return translations;
+        }
+
+        // 遍历所有context元素
+        const contextElements = doc.getElementsByTagName('context');
+        for (let i = 0; i < contextElements.length; i++) {
+            const contextElement = contextElements[i];
+            const nameElement = contextElement.getElementsByTagName('name')[0];
+            const contextName = nameElement?.textContent || '未知上下文';
+
+            const messageElements = contextElement.getElementsByTagName('message');
+            for (let j = 0; j < messageElements.length; j++) {
+                const messageElement = messageElements[j];
+                
+                // 获取source内容
+                const sourceElement = messageElement.getElementsByTagName('source')[0];
+                const sourceText = sourceElement?.textContent || '';
+
+                // 获取translation内容
+                const translationElement = messageElement.getElementsByTagName('translation')[0];
+                if (!translationElement) continue;
+
+                const translationText = translationElement.textContent || '';
+                const isUnfinished = translationElement.getAttribute('type') === 'unfinished';
+
+                // 获取comment内容（可选）
+                const commentElement = messageElement.getElementsByTagName('comment')[0];
+                const commentText = commentElement?.textContent || undefined;
+
+                // 获取location信息（可选）
+                const locationElement = messageElement.getElementsByTagName('location')[0];
+                let locationText: string | undefined = undefined;
+                if (locationElement) {
+                    const filename = locationElement.getAttribute('filename');
+                    const line = locationElement.getAttribute('line');
+                    if (filename && line) {
+                        locationText = `${filename}:${line}`;
+                    }
+                }
+
+                // 只有当translation有内容时才添加到结果中
+                if (translationText.trim() !== '') {
+                    translations.push({
+                        source: sourceText,
+                        translation: translationText,
+                        context: contextName,
+                        comment: commentText,
+                        location: locationText,
+                        isUnfinished: isUnfinished
+                    });
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`提取翻译时出错: ${filePath}`, error);
+    }
+
+    return translations;
+}
+
+/**
+ * 从项目的translations文件夹中提取所有翻译内容并生成检查文件
+ * @param projectPath 项目路径
+ */
+export async function extractTranslationsForChecking(projectPath: string) {
+    try {
+        console.log(`\n========== 开始提取翻译内容 ==========`);
+        console.log(`项目路径: ${projectPath}`);
+
+        // 检查项目路径是否存在
+        if (!fs.existsSync(projectPath)) {
+            console.error(`项目路径不存在: ${projectPath}`);
+            return;
+        }
+
+        // 获取项目名称
+        const projectName = path.basename(projectPath);
+        console.log(`项目名称: ${projectName}`);
+
+        // 查找translations目录 - 支持多个可能的位置
+        const possibleTranslationsDirs = [
+            path.join(projectPath, 'translations'),
+            path.join(projectPath, 'src', 'translations'),
+            path.join(projectPath, 'src'),  // 某些项目可能直接把ts文件放在src下
+        ];
+
+        let translationsDir: string | null = null;
+        let tsFiles: string[] = [];
+
+        // 按优先级查找translations目录
+        for (const dir of possibleTranslationsDirs) {
+            if (fs.existsSync(dir)) {
+                console.log(`检查目录: ${dir}`);
+                const foundTsFiles = findTsFiles(dir);
+                
+                // 过滤出真正的翻译文件（包含语言代码的ts文件）
+                const translationTsFiles = foundTsFiles.filter(file => {
+                    const basename = path.basename(file);
+                    const langCode = extractLanguageCode(basename);
+                    return langCode !== null; // 只要包含语言代码的文件
+                });
+                
+                if (translationTsFiles.length > 0) {
+                    translationsDir = dir;
+                    tsFiles = translationTsFiles;
+                    console.log(`✅ 在 ${dir} 中找到 ${translationTsFiles.length} 个翻译文件`);
+                    break;
+                } else if (foundTsFiles.length > 0) {
+                    console.log(`在 ${dir} 中找到 ${foundTsFiles.length} 个ts文件，但没有翻译文件`);
+                }
+            }
+        }
+
+        if (!translationsDir || tsFiles.length === 0) {
+            console.error('在以下位置都没有找到翻译文件:');
+            possibleTranslationsDirs.forEach(dir => console.error(`  - ${dir}`));
+            return;
+        }
+
+        console.log(`找到 ${tsFiles.length} 个翻译文件`);
+
+        // 提取所有翻译内容
+        const allTranslations: {
+            file: string;
+            langCode: string | null;
+            translations: {
+                source: string;
+                translation: string;
+                context: string;
+                comment?: string;
+                location?: string;
+                isUnfinished: boolean;
+            }[];
+        }[] = [];
+
+        for (const tsFile of tsFiles) {
+            const relativePath = path.relative(translationsDir, tsFile);
+            const langCode = extractLanguageCode(path.basename(tsFile));
+            const translations = extractTranslationsFromFile(tsFile);
+            
+            if (translations.length > 0) {
+                allTranslations.push({
+                    file: relativePath,
+                    langCode: langCode,
+                    translations: translations
+                });
+                console.log(`  - ${relativePath} (${langCode || '未知语言'}): ${translations.length} 个翻译`);
+            }
+        }
+
+        if (allTranslations.length === 0) {
+            console.log('没有找到任何翻译内容');
+            return;
+        }
+
+        // 生成检查文件内容
+        let content = `# ${projectName} 翻译内容检查文件\n\n`;
+        content += `生成时间: ${new Date().toLocaleString('zh-CN')}\n`;
+        content += `项目路径: ${projectPath}\n`;
+        content += `翻译文件数量: ${allTranslations.length}\n\n`;
+
+        // 统计信息 - 以翻译内容是否为空作为主要判断标准
+        const totalTranslations = allTranslations.reduce((sum, item) => sum + item.translations.length, 0);
+        const finishedTranslations = allTranslations.reduce((sum, item) => 
+            sum + item.translations.filter(t => t.translation.trim() !== '').length, 0);
+        const unfinishedTranslations = totalTranslations - finishedTranslations;
+
+        // 更详细的统计信息
+        const emptyTranslations = allTranslations.reduce((sum, item) => 
+            sum + item.translations.filter(t => t.translation.trim() === '').length, 0);
+        const reviewingTranslations = allTranslations.reduce((sum, item) => 
+            sum + item.translations.filter(t => t.translation.trim() !== '' && t.isUnfinished).length, 0);
+        const completedTranslations = totalTranslations - emptyTranslations - reviewingTranslations;
+
+        content += `## 统计信息\n\n`;
+        content += `- 总翻译条目: ${totalTranslations}\n`;
+        content += `- 已完成翻译: ${completedTranslations}\n`;
+        content += `- 已翻译待审核: ${reviewingTranslations}\n`;
+        content += `- 未翻译: ${emptyTranslations}\n\n`;
+
+        content += `## 详细内容\n\n`;
+
+        // 按文件组织内容
+        for (const fileData of allTranslations) {
+            content += `### 文件: ${fileData.file} (${fileData.langCode || '未知语言'})\n\n`;
+            
+            for (let i = 0; i < fileData.translations.length; i++) {
+                const t = fileData.translations[i];
+                content += `#### 条目 ${i + 1}\n`;
+                content += `**原文:** ${t.source}\n`;
+                content += `**译文:** ${t.translation}\n`;
+                content += `---\n`;
+            }
+        }
+
+        // 生成输出文件路径 - 放在项目根目录
+        const outputFileName = `${projectName}_Translation_checking.tx`;
+        const outputFilePath = path.join(projectPath, outputFileName);
+
+        // 写入文件
+        fs.writeFileSync(outputFilePath, content, 'utf8');
+
+        console.log(`\n========== 提取完成 ==========`);
+        console.log(`✅ 翻译内容已提取到: ${outputFilePath}`);
+        console.log(`📊 总计: ${totalTranslations} 个翻译条目`);
+        console.log(`   - 已完成: ${completedTranslations} 个`);
+        console.log(`   - 已翻译待审核: ${reviewingTranslations} 个`);
+        console.log(`   - 未翻译: ${emptyTranslations} 个`);
+        
+    } catch (error) {
+        console.error('提取翻译内容时出错:', error);
+    }
+}
+
+/**
+ * 为单个目录处理语种文件
+ */
+async function processLanguageFilesForDirectory(dirPath: string, dirName: string): Promise<void> {
+    if (!fs.existsSync(dirPath)) {
+        return;
+    }
+
+    // 获取目录下的所有ts文件
+    const tsFiles = fs.readdirSync(dirPath).filter(file => file.endsWith('.ts'));
+
+    if (tsFiles.length === 0) {
+        return;
+    }
+
+    console.log(`📂 在 ${dirName} 中找到 ${tsFiles.length} 个ts文件`);
+
+    // 提取现有的语种代码
+    const existingLanguages = new Set<string>();
+    let baseFileName = '';
+    let templateFile = '';
+
+    for (const file of tsFiles) {
+        const langCode = extractLanguageCode(file);
+        if (langCode) {
+            existingLanguages.add(langCode);
+            
+            // 从带语种代码的文件中提取基础文件名
+            if (!baseFileName) {
+                baseFileName = extractBaseName(file) || '';
+            }
+        }
+        
+        // 优先使用 en.ts 或者 _en.ts 作为模板
+        if (file.includes('_en.ts') || file.endsWith('_en.ts')) {
+            templateFile = file;
+        } else if (!templateFile && (file.endsWith('.ts') && !file.includes('_'))) {
+            templateFile = file;
+            // 如果模板文件是源文件（不含语种代码），则基础文件名就是去除.ts后缀的文件名
+            if (!baseFileName) {
+                baseFileName = file.replace(/\.ts$/, '');
+            }
+        }
+    }
+
+    if (!baseFileName || !templateFile) {
+        console.log(`⚠️  ${dirName}: 无法确定基础文件名或模板文件`);
+        return;
+    }
+
+    console.log(`📋 ${dirName} - 基础文件名: ${baseFileName}`);
+    console.log(`📄 ${dirName} - 模板文件: ${templateFile}`);
+    console.log(`🌐 ${dirName} - 现有语种: ${Array.from(existingLanguages).join(', ')}`);
+
+    // 检查缺失的语种
+    const missingLanguages = REQUIRED_LANGUAGES.filter(lang => !existingLanguages.has(lang));
+    
+    if (missingLanguages.length === 0) {
+        console.log(`✅ ${dirName}: 所有需要的语种文件都已存在`);
+        return;
+    }
+
+    console.log(`📝 ${dirName} - 缺失的语种 (${missingLanguages.length}个): ${missingLanguages.join(', ')}`);
+
+    // 读取模板文件内容
+    const templatePath = path.join(dirPath, templateFile);
+    const templateContent = fs.readFileSync(templatePath, 'utf8');
+
+    // 为每个缺失的语种创建文件
+    let createdCount = 0;
+    for (const langCode of missingLanguages) {
+        try {
+            const newFileName = `${baseFileName}_${langCode}.ts`;
+            const newFilePath = path.join(dirPath, newFileName);
+            
+            // 修改模板内容中的language属性，并确保所有translation标签为未完成状态
+            let newContent = templateContent.replace(
+                /(<TS version="[^"]*" language=")[^"]*(")/,
+                `$1${langCode}$2`
+            );
+            
+            // 将所有translation标签改为未完成状态
+            newContent = newContent.replace(
+                /<translation[^>]*>.*?<\/translation>/gs,
+                '<translation type="unfinished"></translation>'
+            );
+            
+            fs.writeFileSync(newFilePath, newContent, 'utf8');
+            console.log(`✅ ${dirName}: 创建语种文件 ${newFileName}`);
+            createdCount++;
+        } catch (error) {
+            console.error(`❌ ${dirName}: 创建语种文件失败 (${langCode}):`, error);
+        }
+    }
+
+    if (createdCount > 0) {
+        console.log(`🎉 ${dirName}: 成功创建 ${createdCount} 个语种文件`);
+    }
+}
+
+/**
+ * 检测并创建缺失的语种文件（支持递归处理子目录）
+ * @param translationsDir translations目录路径
+ */
+async function ensureLanguageFiles(translationsDir: string): Promise<void> {
+    console.log('\n🔍 检测缺失的语种文件...');
+    
+    if (!fs.existsSync(translationsDir)) {
+        console.log(`⚠️  translations目录不存在: ${translationsDir}`);
+        return;
+    }
+
+    // 先处理translations根目录
+    await processLanguageFilesForDirectory(translationsDir, 'translations');
+
+    // 然后处理所有子目录
+    const entries = fs.readdirSync(translationsDir, { withFileTypes: true });
+    
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            const subDirPath = path.join(translationsDir, entry.name);
+            await processLanguageFilesForDirectory(subDirPath, `translations/${entry.name}`);
+        }
+    }
+}
+
 // 如果直接运行此文件，则作为命令行工具使用
 if ((import.meta as any)?.main || require.main === module) {
     async function main() {
@@ -733,17 +1299,23 @@ if ((import.meta as any)?.main || require.main === module) {
             console.error('  bun closed-source.ts /path/to/your/project file1.ts file2.ts');
             console.error('  bun closed-source.ts /path/to/your/project --exclude file1.ts --exclude file2.ts');
             console.error('  bun closed-source.ts /path/to/your/project file1.ts --exclude skip1.ts');
+            console.error('  bun closed-source.ts /path/to/your/project --extract-only');
+            console.error('  bun closed-source.ts /path/to/your/project --ensure-languages');
             console.error('');
             console.error('参数说明:');
             console.error('  第一个参数: 项目路径（必需）');
             console.error('  其他参数: 指定要翻译的文件名（可选）');
             console.error('  --exclude: 指定要排除的文件名（可选，可多次使用）');
+            console.error('  --extract-only: 只提取翻译内容，不执行翻译');
+            console.error('  --ensure-languages: 只检测并创建缺失的语种文件，不执行翻译');
             process.exit(1);
         }
         
         const projectPath = args[0];
         const excludeFiles: string[] = [];
         const specificFiles: string[] = [];
+        let extractOnly = false;
+        let ensureLanguagesOnly = false;
         
         // 解析命令行参数
         let i = 1;
@@ -756,6 +1328,12 @@ if ((import.meta as any)?.main || require.main === module) {
                     console.error('--exclude 参数需要提供文件名');
                     process.exit(1);
                 }
+            } else if (args[i] === '--extract-only') {
+                extractOnly = true;
+                i++;
+            } else if (args[i] === '--ensure-languages') {
+                ensureLanguagesOnly = true;
+                i++;
             } else {
                 specificFiles.push(args[i]);
                 i++;
@@ -773,15 +1351,34 @@ if ((import.meta as any)?.main || require.main === module) {
         }
         
         try {
-            // 执行翻译
-            await translateClosedSourceProject(
-                projectPath, 
-                specificFiles.length > 0 ? specificFiles : undefined,
-                excludeFiles
-            );
-            console.log('\n✅ 翻译完成');
+            if (ensureLanguagesOnly) {
+                // 只检测并创建缺失的语种文件
+                const translationsDir = path.join(projectPath, 'translations');
+                if (fs.existsSync(translationsDir)) {
+                    await ensureLanguageFiles(translationsDir);
+                    console.log('\n✅ 语种文件检测和创建完成');
+                } else {
+                    console.log('\n⚠️  translations目录不存在，跳过语种文件检测');
+                }
+            } else if (extractOnly) {
+                // 只提取翻译内容
+                await extractTranslationsForChecking(projectPath);
+                console.log('\n✅ 翻译内容提取完成');
+            } else {
+                // 执行翻译
+                await translateClosedSourceProject(
+                    projectPath, 
+                    specificFiles.length > 0 ? specificFiles : undefined,
+                    excludeFiles
+                );
+                console.log('\n✅ 翻译完成');
+                
+                // 翻译完成后自动提取翻译内容用于检查
+                console.log('\n🔍 自动生成翻译检查文件...');
+                await extractTranslationsForChecking(projectPath);
+            }
         } catch (error) {
-            console.error('\n❌ 翻译过程中出错:', error);
+            console.error('\n❌ 处理过程中出错:', error);
             process.exit(1);
         }
     }

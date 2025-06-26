@@ -9,6 +9,86 @@ import { TransifexResource, TransifexRepo, TranslationOperation } from './types'
 import * as YAML from 'js-yaml';
 import * as GitRepo from './gitrepo';
 import * as Transifex from './transifex';
+import { ParallelConfig, getParallelConfig } from './parallel-config';
+
+/**
+ * 并行处理翻译批次
+ */
+async function translateBatchesInParallel(
+    translator: TranslationOperation,
+    translationQueue: any[],
+    targetLanguage: string,
+    keepUnfinishedTypeAttr: boolean,
+    parallelConfig: ParallelConfig,
+    inputFilePath: string
+): Promise<{ actualTranslatedCount: number; hasTranslationErrors: boolean }> {
+    const batchSize = parallelConfig.BATCH_SIZE;
+    const maxConcurrentBatches = parallelConfig.MAX_CONCURRENT_BATCHES;
+    const batchDelay = parallelConfig.BATCH_DELAY;
+    
+    // 将翻译队列分割成批次
+    const batches: any[][] = [];
+    for (let i = 0; i < translationQueue.length; i += batchSize) {
+        batches.push(translationQueue.slice(i, i + batchSize));
+    }
+    
+    const totalBatches = batches.length;
+    let actualTranslatedCount = 0;
+    let hasTranslationErrors = false;
+    
+    console.log(`[并行翻译] 分成 ${totalBatches} 个批次进行并行处理，每批次 ${batchSize} 条，最大并发 ${maxConcurrentBatches}`);
+    
+    // 创建批次处理函数
+    const processBatch = async (batch: any[], batchIndex: number): Promise<number> => {
+        try {
+            console.log(`[并行翻译] 开始处理批次 ${batchIndex + 1}/${totalBatches}，共 ${batch.length} 条`);
+            await translator(batch, targetLanguage, keepUnfinishedTypeAttr);
+            
+            // 检查这一批次翻译成功的数量
+            const batchTranslatedCount = batch.filter(msg => 
+                msg.translationElement && 
+                msg.translationElement.textContent && 
+                msg.translationElement.textContent.trim() !== '' &&
+                msg.translationElement.getAttribute('type') !== 'unfinished'
+            ).length;
+            
+            console.log(`[并行翻译] 批次 ${batchIndex + 1}/${totalBatches} 完成，翻译了 ${batchTranslatedCount} 条`);
+            
+            if (batchTranslatedCount === 0 && batch.length > 0) {
+                hasTranslationErrors = true;
+            }
+            
+            return batchTranslatedCount;
+        } catch (error) {
+            console.error(`[并行翻译错误] 处理批次 ${batchIndex + 1}/${totalBatches} 时出错:`, error.message);
+            hasTranslationErrors = true;
+            return 0;
+        }
+    };
+    
+    // 使用并发限制处理批次
+    for (let i = 0; i < batches.length; i += maxConcurrentBatches) {
+        const currentBatches = batches.slice(i, i + maxConcurrentBatches);
+        const batchPromises = currentBatches.map((batch, index) => 
+            processBatch(batch, i + index)
+        );
+        
+        console.log(`[并行翻译] 并行处理第 ${i + 1}-${Math.min(i + maxConcurrentBatches, batches.length)} 批次`);
+        
+        const results = await Promise.all(batchPromises);
+        actualTranslatedCount += results.reduce((sum, count) => sum + count, 0);
+        
+        // 如果不是最后一轮，添加延迟
+        if (i + maxConcurrentBatches < batches.length) {
+            console.log(`[并行翻译] 等待 ${batchDelay}ms 后继续...`);
+            await new Promise(resolve => setTimeout(resolve, batchDelay));
+        }
+    }
+    
+    console.log(`[并行翻译] 文件 ${inputFilePath} 并行处理完成，共翻译了 ${actualTranslatedCount} 条`);
+    
+    return { actualTranslatedCount, hasTranslationErrors };
+}
 
 /**
  * XML转义函数，将特殊字符转换为XML实体
@@ -65,35 +145,65 @@ export async function translateLinguistTsFile(translator: TranslationOperation, 
         return 0;
     }
     
+    // 获取并行配置
+    const parallelConfig = getParallelConfig();
+    
     // 记录实际成功翻译的数量
     let actualTranslatedCount = 0;
     let hasTranslationErrors = false;
     
-    // split translationQueue into batches, each batch contains 30 messages
-    const batchSize = 15;
-    for (let i = 0; i < translationQueue.length; i += batchSize) {
-        const batch = translationQueue.slice(i, i + batchSize);
-        try {
-            await translator(batch, targetLanguage, keepUnfinishedTypeAttr);
-            // 检查这一批次是否有翻译错误
-            const batchTranslatedCount = batch.filter(msg => 
-                msg.translationElement && 
-                msg.translationElement.textContent && 
-                msg.translationElement.textContent.trim() !== '' &&
-                msg.translationElement.getAttribute('type') !== 'unfinished'
-            ).length;
-            actualTranslatedCount += batchTranslatedCount;
+    // 根据配置选择处理方式
+    if (parallelConfig.ENABLE_PARALLEL && translationQueue.length > parallelConfig.BATCH_SIZE) {
+        // 并行处理
+        const result = await translateBatchesInParallel(
+            translator, 
+            translationQueue, 
+            targetLanguage, 
+            keepUnfinishedTypeAttr, 
+            parallelConfig,
+            inputFilePath
+        );
+        actualTranslatedCount = result.actualTranslatedCount;
+        hasTranslationErrors = result.hasTranslationErrors;
+    } else {
+        // 串行处理（原有逻辑）
+        const batchSize = parallelConfig.BATCH_SIZE;
+        const totalBatches = Math.ceil(translationQueue.length / batchSize);
+        
+        console.log(`[串行翻译] 开始处理 ${translationQueue.length} 条翻译，分成 ${totalBatches} 个批次`);
+        
+        for (let i = 0; i < translationQueue.length; i += batchSize) {
+            const batch = translationQueue.slice(i, i + batchSize);
+            const batchIndex = Math.floor(i / batchSize) + 1;
             
-            // 如果这一批次没有成功翻译任何内容，标记为有错误
-            if (batchTranslatedCount === 0 && batch.length > 0) {
+            try {
+                console.log(`[串行翻译] 处理批次 ${batchIndex}/${totalBatches}，共 ${batch.length} 条`);
+                await translator(batch, targetLanguage, keepUnfinishedTypeAttr);
+                
+                // 检查这一批次是否有翻译错误
+                const batchTranslatedCount = batch.filter(msg => 
+                    msg.translationElement && 
+                    msg.translationElement.textContent && 
+                    msg.translationElement.textContent.trim() !== '' &&
+                    msg.translationElement.getAttribute('type') !== 'unfinished'
+                ).length;
+                actualTranslatedCount += batchTranslatedCount;
+                
+                // 如果这一批次没有成功翻译任何内容，标记为有错误
+                if (batchTranslatedCount === 0 && batch.length > 0) {
+                    hasTranslationErrors = true;
+                }
+                
+                console.log(`[串行翻译] 批次 ${batchIndex}/${totalBatches} 完成，翻译了 ${batchTranslatedCount} 条`);
+                
+                // 添加延迟，让翻译更稳定
+                if (i + batchSize < translationQueue.length) {
+                    await new Promise(resolve => setTimeout(resolve, parallelConfig.BATCH_DELAY));
+                }
+            } catch (error) {
+                console.error(`[串行翻译错误] 处理批次 ${batchIndex}/${totalBatches} 时出错:`, error.message);
                 hasTranslationErrors = true;
             }
-            
-            // 添加1秒延迟，让翻译更稳定
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (error) {
-            console.error(`[翻译错误] 处理批次 ${Math.floor(i/batchSize) + 1} 时出错:`, error.message);
-            hasTranslationErrors = true;
         }
     }
     

@@ -53,12 +53,17 @@ function isValidTranslation(source: string, translation: string, targetLanguage:
 
     // 只有非英语变体才做以下检测
     if (!isEnglishVariant(targetLanguage)) {
-        // 检查翻译是否与原文完全相同（忽略大小写和空格）
-        const normalizedSource = source.toLowerCase().replace(/\s+/g, ' ').trim();
-        const normalizedTranslation = trimmedTranslation.toLowerCase().replace(/\s+/g, ' ').trim();
-        if (normalizedSource === normalizedTranslation) {
-            return { valid: false, reason: '翻译内容与原文完全相同，可能未正确翻译' };
+            // 检查翻译是否与原文完全相同（忽略大小写和空格）
+    const normalizedSource = source.toLowerCase().replace(/\s+/g, ' ').trim();
+    const normalizedTranslation = trimmedTranslation.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (normalizedSource === normalizedTranslation) {
+        // 对于短的专有名词、技术术语等，翻译相同是正常的
+        // 只有当内容较长（超过20个字符）且全部相同时才认为是问题
+        if (source.length > 20) {
+            return { valid: false, reason: '较长文本翻译内容与原文完全相同，可能未进行翻译' };
         }
+        // 短文本如专有名词、品牌名等，相同是正常的，允许通过
+    }
 
         // 检查翻译是否包含明显的英文单词（可能是原文未翻译）
         const englishWords = /\b(?:the|and|or|but|in|on|at|to|for|of|with|by|from|up|down|out|off|over|under|between|among|through|during|before|after|since|until|while|when|where|why|how|what|which|who|whom|whose|this|that|these|those|is|are|was|were|be|been|being|have|has|had|do|does|did|will|would|could|should|may|might|must|can|shall|let|make|get|go|come|take|give|put|set|keep|hold|bring|carry|send|tell|say|speak|talk|write|read|see|look|watch|listen|hear|feel|think|know|understand|learn|teach|help|work|play|eat|drink|sleep|wake|run|walk|sit|stand|lie|open|close|start|stop|begin|end|finish|complete|create|build|make|break|fix|repair|clean|wash|buy|sell|pay|cost|spend|save|find|lose|win|lose|play|game|time|day|night|morning|afternoon|evening|week|month|year|today|yesterday|tomorrow|now|then|here|there|where|when|why|how|what|which|who|yes|no|ok|okay|good|bad|big|small|large|little|new|old|young|hot|cold|warm|cool|fast|slow|quick|easy|hard|difficult|simple|complex|right|wrong|correct|incorrect|true|false|real|fake|true|false|yes|no|ok|okay|good|bad|big|small|large|little|new|old|young|hot|cold|warm|cool|fast|slow|quick|easy|hard|difficult|simple|complex|right|wrong|correct|incorrect|true|false|real|fake|click|here|continue|hello|world)\b/i;
@@ -73,10 +78,11 @@ function isValidTranslation(source: string, translation: string, targetLanguage:
         return { valid: false, reason: '翻译内容包含阿拉伯数字，可能是原文未翻译' };
     }
 
-    // 检查翻译是否包含明显的标点符号（可能是原文未翻译）
-    const punctuation = /[.,;:!?()[\]{}"'`~@#$%^&*+=|\\/<>]/;
-    if (punctuation.test(trimmedTranslation) && !punctuation.test(source)) {
-        return { valid: false, reason: '翻译内容包含标点符号，可能是原文未翻译' };
+    // 检查翻译是否包含明显异常的标点符号组合（如连续的问号或乱码标点）
+    // 移除过于严格的标点符号检查，因为正常翻译中可能包含标点符号
+    const abnormalPunctuation = /[\?\?]{3,}|[!!!]{3,}|[@#$%^&*+=|\\]{3,}/;
+    if (abnormalPunctuation.test(trimmedTranslation)) {
+        return { valid: false, reason: '翻译内容包含异常的标点符号组合，可能是乱码' };
     }
 
     // 其他情况都认为是有效的翻译

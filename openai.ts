@@ -266,20 +266,26 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                 //     }
                 // }
 
-                // 只有非英语变体才做以下检测
+                // 只有非英语变体才做以下检测，并且需要更智能的判断
                 if (!isEnglishVariant(targetLanguage)) {
                     // 检查翻译是否与原文完全相同（忽略大小写和空格）
                     const normalizedSource = source.toLowerCase().replace(/\s+/g, ' ').trim();
                     const normalizedTranslation = trimmedTranslation.toLowerCase().replace(/\s+/g, ' ').trim();
                     if (normalizedSource === normalizedTranslation) {
-                        return { valid: false, reason: '翻译内容与原文相同，可能是专有名词或无需翻译的内容' };
+                        // 对于短的专有名词、技术术语等，翻译相同是正常的
+                        // 只有当内容较长（超过20个字符）且全部相同时才认为是问题
+                        if (source.length > 20) {
+                            return { valid: false, reason: '较长文本翻译内容与原文完全相同，可能未进行翻译' };
+                        }
+                        // 短文本如专有名词、品牌名等，相同是正常的，允许通过
                     }
                 }
 
-                // 检查翻译是否包含明显的标点符号（可能是原文未翻译）
-                const punctuation = /[.,;:!?()[\]{}"'`~@#$%^&*+=|\\/<>]/;
-                if (punctuation.test(trimmedTranslation) && !punctuation.test(source)) {
-                    return { valid: false, reason: '翻译内容包含标点符号，可能是原文未翻译' };
+                // 检查翻译是否包含明显异常的标点符号组合（如连续的问号或乱码标点）
+                // 移除过于严格的标点符号检查，因为正常翻译中可能包含标点符号
+                const abnormalPunctuation = /[\?\?]{3,}|[!!!]{3,}|[@#$%^&*+=|\\]{3,}/;
+                if (abnormalPunctuation.test(trimmedTranslation)) {
+                    return { valid: false, reason: '翻译内容包含异常的标点符号组合，可能是乱码' };
                 }
 
                 // 其他情况都认为是有效的翻译

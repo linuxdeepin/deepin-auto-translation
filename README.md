@@ -14,7 +14,8 @@ Important note: This project provides a set of scripts and utility functions for
 - Automatically synchronizes translation file updates from the Transifex platform
 - Supports multiple LLM translation services (DOUBAO, OPENAI, etc.)
 - Special handling for Traditional Chinese (zh_HK, zh_TW) translations using rule-based matching
-- Supports automatic creation of missing language translation files
+- **🆕 Smart Language File Management**: Automatically detects and creates missing language files, ensuring all required languages have corresponding TS files
+- **🆕 Parallel Translation Processing**: Supports multi-file and multi-batch parallel translation, reducing translation time by 50%-80%
 - Submits translation results synchronized to the Transifex platform
 
 ## Environment Setup

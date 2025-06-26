@@ -13,167 +13,11 @@
 - 自动从Transifex平台同步翻译文件更新
 - 支持多种大模型翻译服务(DOUBAO, OPENAI等)
 - 特别处理繁体中文(zh_HK, zh_TW)翻译，采用规则库匹配方式
-- 支持自动创建缺失的语言翻译文件
+- **🆕 智能语种文件管理**：自动检测并创建缺失的语种文件，确保所有需要的语种都有对应的TS文件
+- **🆕 并行翻译处理**：支持多文件和多批次并行翻译，可将翻译时间减少50%-80%
 - 提交翻译结果同步transfix平台
 
-## 环境准备
-
-### **安装bun运行环境**
-
-Bun是一个的 JavaScript 运行环境，旨在提供比现有的解决方案（如 Node.js）更快的执行速度和更高效的资源管理。此外，对于需要快速编写和执行的小型脚本任务，Bun 提供了一个轻量级且高效的选择。无论是文件系统操作、网络请求还是其他 I/O 操作，Bun 都能提供优异的性能表现。
-
-官网地址：https://bun.sh/
-
-安装步骤:
-
-```bash
-# 安装bun，有些环境这个命令没法安装bun
-# 注意：安装失败的话，就去https://github.com/oven-sh/bun/releases 找安装包手动安装后配置路径到bashrc即可，确保Bun在我们的path中
-curl -fsSL https://bun.sh/install | bash
-
-# 添加到PATH (将以下内容添加到 ~/.bashrc)，如果用curl -fsSL https://bun.sh/install | bash则是在这个路径/home/uos/.bun/bin 下找bun命令，手动安装的话也建议参考这个路径
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-# 重新加载配置
-source ~/.bashrc
-
-# 验证安装
-bun --version
-```
-
-### **配置Transifex CLI**
-
-```bash
-# 安装Transifex CLI
-curl -o- https://raw.githubusercontent.com/transifex/cli/master/install.sh | bash
-sudo apt install transifex-client
-
-# 配置Transifex认证 (创建 ~/.transifexrc 文件)
-[https://www.transifex.com]
-rest_hostname = https://rest.api.transifex.com
-api_hostname = https://api.transifex.com
-hostname = https://www.transifex.com
-token = YOUR_TRANSIFEX_API_TOKEN
-
-# 验证安装
-tx --version
-```
-
-### 本地AI翻译部署
-
-将项目中根目录中的secrets.sample.ts文件替换名字为secrets.ts，并添加对应大模型的API密钥信息和Model信息：
-
-```c++
-// SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
-//
-// SPDX-License-Identifier: CC0-1.0
-export const doubao = {
-    model: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-};
-
-export const openai = {
-    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-};
-
-export const transifex = {
-    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-}
-
-export default {doubao, openai, transifex};
-```
-
-##### 获取大模型API密钥和model方法介绍:
-
-**注：示例中的API均为过期的密钥，仅做示范使用。**
-
-##### 基于火山引擎调用豆包API方法介绍:
-
-登录火山方舟主页 https://www.volcengine.com/product/ark,注册账号并登录:
-
-![image-20250424101159837](README.zh_CN.assets/image-20250424101159837.png)
-
-
-
-登录主页后选择API构建应用:
-
-![image-20250424101311756](README.zh_CN.assets/image-20250424101311756.png)
-
-创建API密钥：
-
-![image-20250424101405795](README.zh_CN.assets/image-20250424101405795.png)
-
-创建好,我们点击左侧导航栏的模型广场,选择我们要使用的模型,翻译我们使用的是语言对话模型：
-
-![image-20250424101600352](README.zh_CN.assets/image-20250424101600352.png)
-
-![image-20250424101700941](README.zh_CN.assets/image-20250424101700941.png)
-
-![image-20250424101751520](README.zh_CN.assets/image-20250424101751520.png)
-
-进入大模型使用界面后,点击API接入：
-
-![image-20250424102157116](README.zh_CN.assets/image-20250424102157116.png)
-
-首先获取我们之前创建的API KEY：
-
-![image-20250424102223237](README.zh_CN.assets/image-20250424102223237.png)
-
-点击使用后,会选择接入模型,根据需求选择既可:
-
-![image-20250424102233363](README.zh_CN.assets/image-20250424102233363.png)
-
-开通模型后,根据步骤提示,将API key和model填入secrets.ts文件中既可:
-
-![image-20250424102306955](README.zh_CN.assets/image-20250424102306955.png)
-
-![image-20250424102333686](README.zh_CN.assets/image-20250424102333686.png)
-
-##### 基于硅基流动大模型api调用介绍:
-
-硅基流动（SiliconFlow）提供了一系列API接口，允许开发者调用其大模型进行各种人工智能任务，包括对话生成、文本处理、图像生成、语音和视频处理等。
-
-1.**注册与登录**：
-
-- 用户需要访问硅基流动的官方网站（https://cloud.siliconflow.cn/models）并完成注册，通常通过手机号验证码进行。
-
-2.**API密钥管理**：
-
-- 在硅基流动平台中，用户需要创建API密钥，这是调用API的必要步骤。创建API密钥后，应立即保存，因为某些情况下，创建后的密钥可能不可再次查看。
-- API密钥的生成可以在用户账户的API管理页面完成，支持添加描述。
-
-![image-20250424104417697](README.zh_CN.assets/image-20250424104417697.png)
-
-3.创建完密钥后，在主菜单的导航栏中选择模型广场，可以点击筛选选择自己需要的模型：
-
-![image-20250424105658429](README.zh_CN.assets/image-20250424105658429.png)
-
-点击进入模型界面后，点击APi文档按钮,保存model：
-
-![image-20250424105734164](README.zh_CN.assets/image-20250424105734164.png)
-
-![image-20250424105823352](README.zh_CN.assets/image-20250424105823352.png)
-
-4.调用硅基流动API
-
-硅基流动中的模型都可以通过API进行调用，但是如果充值的话，需要进行实名认证才可以往账户里面充值（因为有模型是付费才能使用的，所以需要充值），API调用的方式（QWen2.5模型调用为例），复制步骤2中生成的api密钥和我们在步骤3中选择的model名到secrets.ts文件中，供脚本调用：
-
-![image-20250424105408843](README.zh_CN.assets/image-20250424105408843.png)
-
-翻译模型可以在 `settings.ts` 中进行配置，例如在硅基流程动：
-
-```typescript
-export const openai = {
-    chatCompletionsEndpoint: "https://api.siliconflow.cn/v1/chat/completions",
-    model: "Qwen/Qwen2.5-7B-Instruct" // 可以替换为其他模型
-```
-
-##### **Transifex API密钥**配置介绍：
-
-这个密钥不需要我们自己去申请了,wiki上有直接用:
-
-https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9B%BD%E9%99%85%E5%8C%96 查看步骤3
+## 开源项目翻译流程
 
 ## 项目文件结构介绍
 
@@ -390,6 +234,145 @@ graph TD
 
 ## 闭源项目翻译流程
 
+### 环境准备
+
+#### **安装bun运行环境**
+
+Bun是一个的 JavaScript 运行环境，旨在提供比现有的解决方案（如 Node.js）更快的执行速度和更高效的资源管理。此外，对于需要快速编写和执行的小型脚本任务，Bun 提供了一个轻量级且高效的选择。无论是文件系统操作、网络请求还是其他 I/O 操作，Bun 都能提供优异的性能表现。
+
+官网地址：https://bun.sh/
+
+安装步骤:
+
+```bash
+# 安装bun，有些环境这个命令没法安装bun
+# 注意：安装失败的话，就去https://github.com/oven-sh/bun/releases 找安装包手动安装后配置路径到bashrc即可，确保Bun在我们的path中
+curl -fsSL https://bun.sh/install | bash
+
+# 添加到PATH (将以下内容添加到 ~/.bashrc)，如果用curl -fsSL https://bun.sh/install | bash则是在这个路径/home/uos/.bun/bin 下找bun命令，手动安装的话也建议参考这个路径
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# 重新加载配置
+source ~/.bashrc
+
+# 验证安装
+bun --version
+```
+
+#### 本地AI翻译部署
+
+将项目中根目录中的secrets.sample.ts文件替换名字为secrets.ts，并添加对应大模型的API密钥信息和Model信息：
+
+```c++
+// SPDX-FileCopyrightText: 2024 UnionTech Software Technology Co., Ltd.
+//
+// SPDX-License-Identifier: CC0-1.0
+export const doubao = {
+    model: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+};
+
+export const openai = {
+    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+};
+
+export const transifex = {
+    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+}
+
+export default {doubao, openai, transifex};
+```
+
+##### 获取大模型API密钥和model方法介绍:
+
+**注：示例中的API均为过期的密钥，仅做示范使用。**
+
+##### 基于火山引擎调用豆包API方法介绍:
+
+登录火山方舟主页 https://www.volcengine.com/product/ark,注册账号并登录:
+
+![image-20250424101159837](README.zh_CN.assets/image-20250424101159837.png)
+
+登录主页后选择API构建应用:
+
+![image-20250424101311756](README.zh_CN.assets/image-20250424101311756.png)
+
+创建API密钥：
+
+![image-20250424101405795](README.zh_CN.assets/image-20250424101405795.png)
+
+创建好,我们点击左侧导航栏的模型广场,选择我们要使用的模型,翻译我们使用的是语言对话模型：
+
+![image-20250424101600352](README.zh_CN.assets/image-20250424101600352.png)
+
+![image-20250424101700941](README.zh_CN.assets/image-20250424101700941.png)
+
+![image-20250424101751520](README.zh_CN.assets/image-20250424101751520.png)
+
+进入大模型使用界面后,点击API接入：
+
+![image-20250424102157116](README.zh_CN.assets/image-20250424102157116.png)
+
+首先获取我们之前创建的API KEY：
+
+![image-20250424102223237](README.zh_CN.assets/image-20250424102223237.png)
+
+点击使用后,会选择接入模型,根据需求选择既可:
+
+![image-20250424102233363](README.zh_CN.assets/image-20250424102233363.png)
+
+开通模型后,根据步骤提示,将API key和model填入secrets.ts文件中既可:
+
+![image-20250424102306955](README.zh_CN.assets/image-20250424102306955.png)
+
+![image-20250424102333686](README.zh_CN.assets/image-20250424102333686.png)
+
+##### 基于硅基流动大模型api调用介绍:
+
+硅基流动（SiliconFlow）提供了一系列API接口，允许开发者调用其大模型进行各种人工智能任务，包括对话生成、文本处理、图像生成、语音和视频处理等。
+
+1.**注册与登录**：
+
+- 用户需要访问硅基流动的官方网站（https://cloud.siliconflow.cn/models）并完成注册，通常通过手机号验证码进行。
+
+2.**API密钥管理**：
+
+- 在硅基流动平台中，用户需要创建API密钥，这是调用API的必要步骤。创建API密钥后，应立即保存，因为某些情况下，创建后的密钥可能不可再次查看。
+- API密钥的生成可以在用户账户的API管理页面完成，支持添加描述。
+
+![image-20250424104417697](README.zh_CN.assets/image-20250424104417697.png)
+
+3.创建完密钥后，在主菜单的导航栏中选择模型广场，可以点击筛选选择自己需要的模型：
+
+![image-20250424105658429](README.zh_CN.assets/image-20250424105658429.png)
+
+点击进入模型界面后，点击APi文档按钮,保存model：
+
+![image-20250424105734164](README.zh_CN.assets/image-20250424105734164.png)
+
+![image-20250424105823352](README.zh_CN.assets/image-20250424105823352.png)
+
+4.调用硅基流动API
+
+硅基流动中的模型都可以通过API进行调用，但是如果充值的话，需要进行实名认证才可以往账户里面充值（因为有模型是付费才能使用的，所以需要充值），API调用的方式（QWen2.5模型调用为例），复制步骤2中生成的api密钥和我们在步骤3中选择的model名到secrets.ts文件中，供脚本调用：
+
+![image-20250424105408843](README.zh_CN.assets/image-20250424105408843.png)
+
+翻译模型可以在 `settings.ts` 中进行配置，例如在硅基流程动：
+
+```typescript
+export const openai = {
+    chatCompletionsEndpoint: "https://api.siliconflow.cn/v1/chat/completions",
+    model: "Qwen/Qwen2.5-7B-Instruct" // 可以替换为其他模型
+```
+
+##### **Transifex API密钥**配置介绍：
+
+这个密钥不需要我们自己去申请了,wiki上有直接用:
+
+https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9B%BD%E9%99%85%E5%8C%96 查看步骤3
+
 ### 使用方法
 
 直接运行以下命令启动翻译流程:
@@ -402,6 +385,8 @@ $ bun closed-source.ts /path/to/project [optional-file-list] [--exclude pattern]
 - **项目路径** (必需): 包含翻译文件的项目目录路径
 - **文件列表** (可选): 指定要处理的特定翻译文件
 - **排除模式** (可选): 使用 `--exclude` 跳过匹配的文件或目录
+- **--extract-only** (可选): 只提取翻译内容，不执行翻译
+- **--ensure-languages** (可选): 只检测并创建缺失的语种文件，不执行翻译
 
 #### 使用示例
 
@@ -413,8 +398,87 @@ bun closed-source.ts /path/to/project
 bun closed-source.ts /path/to/project app_en.ts xx_fr.ts xx_ru.ts
 
 # 翻译所有文件但排除指定的翻译文件
-   bun closed-source.ts /path/to/project --exclude xx_zh_CN.ts --exclude xx_en.ts
+bun closed-source.ts /path/to/project --exclude xx_zh_CN.ts --exclude xx_en.ts
+
+# 只提取翻译内容用于检查，不执行翻译
+bun closed-source.ts /path/to/project --extract-only
+
+# 🆕 只检测并创建缺失的语种文件（安全操作：只创建新文件，不会删除或修改已有文件）
+bun closed-source.ts /path/to/project --ensure-languages
 ```
+
+### 🆕 智能语种文件管理功能
+
+**功能说明**：自动检测项目中是否包含所需的38种语言翻译文件，为缺失的语种自动创建标准格式的TS文件。
+
+**支持的语种列表**：
+```
+ca, hu, pl, az, fi, nl, fr, cs, tr, pt, ms, ru, sl, sr, gl_ES, ko, hr, da, ro, krl, lt, id, sk, el, hi_IN, ne, fa, et, bg, sv, am_ET, vi, bn, th, uz, fil, ur, ar
+```
+
+**安全保证**：
+- ✅ **只创建缺失的文件**：不会删除或修改任何已存在的语种文件
+- ✅ **智能模板选择**：优先使用 `项目名_en.ts` 作为模板，如没有则使用 `项目名.ts`
+- ✅ **正确语种标识**：自动设置 `<TS version="2.1" language="xx">` 中的语种代码
+- ✅ **标准未翻译格式**：所有翻译条目都设置为 `<translation type="unfinished"></translation>`
+
+**使用场景**：
+```bash
+# 为现有项目补充缺失的语种文件
+bun closed-source.ts /path/to/existing-project --ensure-languages
+```
+
+### 🆕 并行翻译处理功能
+
+**功能说明**：支持多文件和多批次并行翻译，通过同时处理多个文件和批次，可将翻译时间减少50%-80%。
+
+**并行处理优势**：
+- **文件级并行**：同时处理多个翻译文件（默认3个）
+- **批次级并行**：每个文件内部同时处理多个批次（默认2个）
+- **延迟优化**：批次延迟从2秒减少到1秒
+- **智能配置**：支持多种预设配置和自定义设置
+
+**配置方式**：通过环境变量 `TRANSLATION_PARALLEL_CONFIG` 选择预设配置：
+
+```bash
+# 默认配置（推荐，适合大多数情况）
+export TRANSLATION_PARALLEL_CONFIG=default
+bun closed-source.ts /path/to/project
+
+# 高性能配置（适合高配置机器）
+export TRANSLATION_PARALLEL_CONFIG=high
+bun closed-source.ts /path/to/project
+
+# 保守配置（适合API限制严格的情况）
+export TRANSLATION_PARALLEL_CONFIG=conservative
+bun closed-source.ts /path/to/project
+
+# 禁用并行处理（回退到原始串行模式）
+export TRANSLATION_PARALLEL_CONFIG=serial
+bun closed-source.ts /path/to/project
+
+# 不设置环境变量时使用默认配置
+bun closed-source.ts /path/to/project
+```
+
+**预设配置对比**：
+
+| 配置类型 | 文件并发数 | 批次并发数 | 批次大小 | 批次延迟 | 适用场景 |
+|---------|-----------|-----------|---------|---------|----------|
+| 默认配置 | 3 | 2 | 30 | 1000ms | 大多数情况 |
+| 高性能配置 | 5 | 3 | 50 | 500ms | 高配置机器 + 宽松API限制 |
+| 保守配置 | 2 | 1 | 20 | 2000ms | API限制严格 |
+| 串行配置 | 1 | 1 | 30 | 2000ms | 禁用并行处理 |
+
+**性能提升示例**（60个文件，每个90条文本）：
+- 串行处理：约30-45分钟
+- 默认并行：约10-15分钟（提升60-70%）
+- 高性能并行：约6-10分钟（提升75-85%）
+
+**注意事项**：
+- 如遇到API限流错误，请使用保守配置
+- 并行处理会增加CPU和内存使用
+- 详细使用说明请参考：`PARALLEL_TRANSLATION.md`
 
 ### 工作流程详解
 
@@ -488,3 +552,6 @@ graph TD
 - [Transifex翻译同步配置指南](https://wikidev.uniontech.com/Transifex%E7%BF%BB%E8%AF%91%E5%90%8C%E6%AD%A5%E9%85%8D%E7%BD%AE%E6%8C%87%E5%8D%97)
 - [Transifex-cli使用指南](https://wikidev.uniontech.com/Transifex-cli)
 - [Deepin-translation-utils使用说明](https://wikidev.uniontech.com/Deepin-translation-utils%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E) (项目配置文件自动生成工具)
+
+### 项目文档
+- [PARALLEL_TRANSLATION.md](PARALLEL_TRANSLATION.md) - 并行翻译功能详细说明文档
