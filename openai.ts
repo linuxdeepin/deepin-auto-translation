@@ -9,12 +9,43 @@ import * as Secrets from './secrets';
 import { MessageData } from './types';
 import * as Prompt from './prompt';
 
+// 🔧 全局文本标准化函数，用于比较源文本时忽略格式差异
+function normalizeTextForComparison(text: string): string {
+    return text
+        .trim()
+        // 首先处理转义字符，将转义的引号转换为普通引号
+        .replace(/\\"/g, '"')           // 转义的双引号 -> 普通双引号
+        .replace(/\\'/g, "'")           // 转义的单引号 -> 普通单引号
+        .replace(/\\\\/g, '\\')         // 转义的反斜杠 -> 普通反斜杠
+        // 处理多余的引号包围（常见于API返回的JSON解析结果）
+        .replace(/^["']+|["']+$/g, '')  // 移除首尾的引号（单引号或双引号）
+        .replace(/\s+/g, ' ')           // 将多个空白字符（包括换行符、制表符等）替换为单个空格
+        .replace(/\n/g, ' ')            // 确保换行符被替换为空格
+        .replace(/\r/g, ' ')            // 确保回车符被替换为空格
+        .replace(/\t/g, ' ')            // 确保制表符被替换为空格
+        .replace(/[　]/g, ' ')          // 全角空格替换为半角空格
+        .replace(/["""'']/g, '"')       // 统一引号格式（全角引号、智能引号等）
+        .replace(/[''′]/g, "'")         // 统一撇号格式
+        .replace(/[…]/g, '...')         // 统一省略号格式
+        .replace(/[—–]/g, '-')          // 统一破折号格式
+        .replace(/\s+/g, ' ')           // 再次合并多个空格
+        .trim();
+}
+
 export async function fetchTranslations(messages: MessageData[], targetLanguage: string, keepUnfinishedTypeAttr : boolean) : Promise<void>
 {
+    // 🔒 安全检查：为每条消息创建唯一标识，确保上下文独立
+    const messagesWithId = messages.map((message, index) => ({
+        ...message,
+        _originalIndex: index,
+        _contextId: `${message.context}_${message.source}_${index}` // 唯一标识符
+    }));
+    
     let userPrompt = YAML.dump({
         targetLanguageCode: targetLanguage,
-        messages: messages.map(message => {
+        messages: messagesWithId.map((message, index) => {
             return {
+                index: index, // 🔒 添加索引字段，确保顺序可追踪
                 context: message.context,
                 source: message.source,
                 comment: message.comment
@@ -56,11 +87,9 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         
         // 显示原始响应，使用格式化的JSON
         console.log("[原始响应]");
-        // 过滤掉大量空行，只保留有实际内容的行
-        const responseLines = response.data.choices[0].message.content.split('\n');
-        const filteredLines = responseLines.filter(line => line.trim() !== '').slice(0, 20); // 只显示前20行有内容的行
-        const cleanedResponse = filteredLines.join('\n');
-        console.log(cleanedResponse + (responseLines.length > filteredLines.length ? '\n...' : ''));
+        // 显示完整的原始响应内容，不再截断
+        const fullResponse = response.data.choices[0].message.content;
+        console.log(fullResponse);
         
         // 对返回内容进行预处理，移除可能的Markdown代码块标记和清理内容
         let content = response.data.choices[0].message.content.replace(/```json\n?|\n?```/g, '').trim();
@@ -182,15 +211,20 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             // 检查数组格式
             if (!Array.isArray(parsedContent)) {
                 console.error('[错误] 响应格式错误: 不是数组格式');
-                console.error(`[处理结果] 由于响应格式错误，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+                console.error(`[处理结果] API响应格式异常，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+                console.error('可能原因：API返回了非JSON格式内容或格式不符合预期');
                 return;
             }
 
-            // 检查数组长度
+            // 检查数组长度是否匹配
             if (parsedContent.length !== messages.length) {
-                console.error(`[警告] 翻译数量不匹配 (预期: ${messages.length}, 实际: ${parsedContent.length})`);
+                console.log('[翻译警告] 翻译数量不匹配');
+                console.log(`- 预期数量: ${messages.length}`);
+                console.log(`- 实际数量: ${parsedContent.length}`);
+                console.log('- 继续处理可用的翻译，未返回的条目将保持unfinished状态');
             }
 
+            // 🔒 初始化统计变量
             let successCount = 0;
             let skipCount = 0;
             let qualityIssueCount = 0;
@@ -275,7 +309,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                         // 对于短的专有名词、技术术语等，翻译相同是正常的
                         // 只有当内容较长（超过20个字符）且全部相同时才认为是问题
                         if (source.length > 20) {
-                            return { valid: false, reason: '较长文本翻译内容与原文完全相同，可能未进行翻译' };
+                            return { valid: false, reason: '较长文本翻译内容与原文完全相同，模型未正确翻译，跳过不处理' };
                         }
                         // 短文本如专有名词、品牌名等，相同是正常的，允许通过
                     }
@@ -296,7 +330,8 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             const parsedArray = parsedContent;
             if (!Array.isArray(parsedArray)) {
                 console.error('[翻译错误] 响应格式错误: 响应解析结果不是数组');
-                console.error(`[处理结果] 由于响应格式错误，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+                console.error(`[处理结果] API响应解析失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+                console.error('可能原因：JSON解析异常或数据结构不符合预期');
                 return;
             }
 
@@ -305,68 +340,507 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                 console.log('[翻译警告] 翻译数量不匹配');
                 console.log(`- 预期数量: ${messages.length}`);
                 console.log(`- 实际数量: ${parsedArray.length}`);
-                console.log('- 继续处理可用的翻译');
+                console.log('- 继续处理可用的翻译，未返回的条目将保持unfinished状态');
             }
 
             console.log('[翻译详情] 开始处理翻译条目:');
-            for (let i = 0; i < Math.min(messages.length, parsedArray.length); i++) {
-                try {
-                    const translation = parsedArray[i];
-                    let translationElement = messages[i].translationElement;
-                    const sourceText = messages[i].source;
+            
+            // 🔒 严格索引验证：确保翻译结果与源文本的对应关系绝对正确
+            const validMappings: Array<{
+                sourceIndex: number;
+                translationIndex: number;
+                sourceText: string;
+                translationText: string;
+                isValid: boolean;
+                reason?: string;
+                hasResponse: boolean; // 新增：标记是否有API响应
+            }> = [];
+            
+            // 🔒 第一步：为所有输入创建映射，包括没有响应的条目
+            console.log(`[上下文验证] 处理输入条目: ${messagesWithId.length} 条，API响应: ${parsedArray.length} 条`);
+            
+            // 🔒 智能错位修复：首先尝试建立正确的源文本映射
+            const sourceTextToIndex = new Map<string, number>();
+            for (let i = 0; i < messagesWithId.length; i++) {
+                sourceTextToIndex.set(messagesWithId[i].source, i);
+            }
+            
+            // 🔒 检测是否存在错位问题
+            let hasSourceMismatch = false;
+            
+            for (let i = 0; i < Math.min(parsedArray.length, messagesWithId.length); i++) {
+                const translation = parsedArray[i];
+                const sourceMessage = messagesWithId[i];
+                
+                // 🔧 修复：使用全局文本标准化函数进行比较
+                const originalSourceNormalized = normalizeTextForComparison(sourceMessage.source);
+                const apiSourceNormalized = translation.source ? normalizeTextForComparison(translation.source) : '';
+                const sourceTextMatch = originalSourceNormalized === apiSourceNormalized;
+                
+                if (translation.source && !sourceTextMatch) {
+                    hasSourceMismatch = true;
+                    console.log(`[源文检测] ❌ 检测到错位！条目 ${i + 1} 源文本不匹配`);
+                    console.log(`[源文检测] 原文: "${originalSourceNormalized}"`);
+                    console.log(`[源文检测] API:  "${apiSourceNormalized}"`);
+                    break;
+                }
+            }
+            
+            // console.log(`[错位检测] 错位检测结果: hasSourceMismatch = ${hasSourceMismatch}`);
+            
+            // 🔧 环境变量控制智能修复功能（默认禁用，避免错位风险）
+            const enableSourceValidation = process.env.ENABLE_SOURCE_VALIDATION === 'true';
+            
+            if (hasSourceMismatch && enableSourceValidation) {
+                console.log(`[🔧 源文校验] 检测到源文本错位，启动智能匹配修复...`);
+                
+                // 尝试通过源文本内容重新建立映射
+                const usedTranslations = new Set<number>();
+                const sourceValidationMappings: Array<{
+                    sourceIndex: number;
+                    translationIndex: number;
+                    sourceText: string;
+                    translationText: string;
+                    isValid: boolean;
+                    reason?: string;
+                    hasResponse: boolean;
+                    matchType: 'exact' | 'fallback' | 'none';
+                }> = [];
+                
+                // 第一遍：精确匹配
+                for (let i = 0; i < messagesWithId.length; i++) {
+                    const sourceMessage = messagesWithId[i];
+                    const sourceText = sourceMessage.source;
                     
-                    // 检查翻译是否有效
-                    if (!translation || !translation.translation || typeof translation.translation !== 'string') {
-                        // 保留错误信息的详细输出
-                        console.log(`[条目 ${i+1}/${messages.length}] ❌ 跳过`);
-                        console.log(`- 原文: "${sourceText}"`);
-                        console.log(`- 原因: 无效的翻译内容`);
-                        if (translation) {
-                            console.log(`- 返回: ${JSON.stringify(translation)}`);
+                    // 在所有API响应中查找匹配的源文本
+                    let foundMatch = false;
+                    for (let j = 0; j < parsedArray.length; j++) {
+                        if (usedTranslations.has(j)) continue;
+                        
+                        const translation = parsedArray[j];
+                        // 🔧 修复：使用全局文本标准化函数进行比较
+                        if (translation.source && normalizeTextForComparison(translation.source) === normalizeTextForComparison(sourceText)) {
+                            // 找到精确匹配
+                            console.log(`[🔧 源文校验] 精确匹配: 源文本 ${i} → 翻译 ${j} ("${sourceText.substring(0, 30)}...")`);
+                            
+                            usedTranslations.add(j);
+                            sourceValidationMappings.push({
+                                sourceIndex: i,
+                                translationIndex: j,
+                                sourceText: sourceText,
+                                translationText: translation.translation || '',
+                                isValid: true,
+                                hasResponse: true,
+                                matchType: 'exact'
+                            });
+                            foundMatch = true;
+                            break;
                         }
-                        skipCount++;
+                    }
+
+                    if (!foundMatch) {
+                        // 🚫 新逻辑：不进行回退匹配，直接标记为跳过
+                        // console.log(`[🔧 智能修复] ❌ 跳过条目 ${i + 1}: 源文本不匹配，为避免翻译错行，保持未完成状态 ("${sourceText.substring(0, 30)}...")`);
+                        sourceValidationMappings.push({
+                            sourceIndex: i,
+                            translationIndex: -1,
+                            sourceText: sourceText,
+                            translationText: '',
+                            isValid: false,
+                            hasResponse: false,
+                            matchType: 'none',
+                            reason: '源文本不匹配，为避免翻译错行而跳过'
+                        });
+                    }
+                }
+                
+                // 🚫 移除第二遍回退匹配逻辑，直接输出统计结果
+                const exactMatches = sourceValidationMappings.filter(m => m.matchType === 'exact').length;
+                const skippedMatches = sourceValidationMappings.filter(m => m.matchType === 'none').length;
+                console.log(`[🔧 源文校验] 修复完成 - 精确匹配: ${exactMatches}, 跳过条目: ${skippedMatches}, 总计: ${messagesWithId.length}`);
+                console.log(`[🔧 源文校验] 为避免翻译错行，${skippedMatches} 个源文本不匹配的条目将保持 "unfinished" 状态`);
+                
+                // 使用源文校验后的映射替换原来的映射处理逻辑
+                for (const mapping of sourceValidationMappings) {
+                    try {
+                        const sourceMessage = messagesWithId[mapping.sourceIndex];
+                        
+                        if (mapping.isValid && mapping.translationText) {
+                            // 进行质量检查
+                            const qualityCheck = isValidTranslation(mapping.sourceText, mapping.translationText, targetLanguage);
+                            if (!qualityCheck.valid) {
+                                validMappings.push({
+                                    sourceIndex: mapping.sourceIndex,
+                                    translationIndex: mapping.translationIndex,
+                                    sourceText: mapping.sourceText,
+                                    translationText: mapping.translationText,
+                                    isValid: false,
+                                    hasResponse: true,
+                                    reason: `质量检查失败: ${qualityCheck.reason}`
+                                });
+                                continue;
+                            }
+
+                            // 实时语种检测
+                            // const languageValidation = preWriteTranslationValidation(
+                            //     mapping.sourceText, 
+                            //     mapping.translationText, 
+                            //     targetLanguage, 
+                            //     true
+                            // );
+                            
+                            // if (!languageValidation.isValid) {
+                            //     validMappings.push({
+                            //         sourceIndex: mapping.sourceIndex,
+                            //         translationIndex: mapping.translationIndex,
+                            //         sourceText: mapping.sourceText,
+                            //         translationText: mapping.translationText,
+                            //         isValid: false,
+                            //         hasResponse: true,
+                            //         reason: `语种检测失败: ${languageValidation.reason}`
+                            //     });
+                            //     continue;
+                            // }
+                            
+                            // 通过所有检查
+                            validMappings.push({
+                                sourceIndex: mapping.sourceIndex,
+                                translationIndex: mapping.translationIndex,
+                                sourceText: mapping.sourceText,
+                                translationText: mapping.translationText,
+                                isValid: true,
+                                hasResponse: true
+                            });
+                        } else {
+                            validMappings.push({
+                                sourceIndex: mapping.sourceIndex,
+                                translationIndex: mapping.translationIndex,
+                                sourceText: mapping.sourceText,
+                                translationText: mapping.translationText,
+                                isValid: false,
+                                hasResponse: mapping.hasResponse,
+                                reason: mapping.reason || '未知错误'
+                            });
+                        }
+                    } catch (error) {
+                        validMappings.push({
+                            sourceIndex: mapping.sourceIndex,
+                            translationIndex: mapping.translationIndex,
+                            sourceText: mapping.sourceText,
+                            translationText: '',
+                            isValid: false,
+                            hasResponse: mapping.hasResponse,
+                            reason: `处理异常: ${error.message}`
+                        });
+                    }
+                }
+            } else if (hasSourceMismatch && !enableSourceValidation) {
+                // 🚫 源文校验被禁用但检测到错位问题，跳过所有可能有问题的翻译
+                console.log(`[🚫 源文校验] 源文校验已禁用 (ENABLE_SOURCE_VALIDATION=false)，检测到源文本错位，为避免翻译错行，将跳过所有可能错位的条目`);
+                
+                for (let i = 0; i < messagesWithId.length; i++) {
+                    const sourceMessage = messagesWithId[i];
+                    const sourceText = sourceMessage.source;
+                    
+                    // 检查是否有对应的API响应
+                    if (i >= parsedArray.length) {
+                        validMappings.push({
+                            sourceIndex: i,
+                            translationIndex: i,
+                            sourceText: sourceText,
+                            translationText: '',
+                            isValid: false,
+                            hasResponse: false,
+                            reason: 'API未返回此条目的翻译'
+                        });
+                        continue;
+                    }
+                    
+                    const translation = parsedArray[i];
+                    
+                    // 🚫 严格检查源文本匹配，不匹配就跳过
+                    // 🔧 修复：使用全局文本标准化函数进行比较
+                    if (translation.source && normalizeTextForComparison(translation.source) !== normalizeTextForComparison(sourceText)) {
+                        console.log(`[🚫 源文校验] ❌ 跳过条目 ${i + 1}: 源文本不匹配，源文校验已禁用`);
+                        console.log(`[🚫 源文校验]   预期源文本: "${sourceText}"`);
+                        console.log(`[🚫 源文校验]   API返回源文本: "${translation.source}"`);
+                        validMappings.push({
+                            sourceIndex: i,
+                            translationIndex: i,
+                            sourceText: sourceText,
+                            translationText: '',
+                            isValid: false,
+                            hasResponse: true,
+                            reason: '源文本不匹配'
+                        });
+                        continue;
+                    }
+                    
+                    // 源文本匹配或没有源文本字段，进行正常处理
+                    if (!translation || !translation.translation || typeof translation.translation !== 'string') {
+                        validMappings.push({
+                            sourceIndex: i,
+                            translationIndex: i,
+                            sourceText: sourceText,
+                            translationText: '',
+                            isValid: false,
+                            hasResponse: true,
+                            reason: '无效的翻译内容格式'
+                        });
+                        continue;
+                    }
+                    
+                    // 质量检查
+                    const qualityCheck = isValidTranslation(sourceText, translation.translation, targetLanguage);
+                    if (!qualityCheck.valid) {
+                        validMappings.push({
+                            sourceIndex: i,
+                            translationIndex: i,
+                            sourceText: sourceText,
+                            translationText: translation.translation,
+                            isValid: false,
+                            hasResponse: true,
+                            reason: `质量检查失败: ${qualityCheck.reason}`
+                        });
+                        continue;
+                    }
+                    
+                    // 语种检测
+                    // const languageValidation = preWriteTranslationValidation(
+                    //     sourceText, 
+                    //     translation.translation, 
+                    //     targetLanguage, 
+                    //     true
+                    // );
+                    
+                    // if (!languageValidation.isValid) {
+                    //     validMappings.push({
+                    //         sourceIndex: i,
+                    //         translationIndex: i,
+                    //         sourceText: sourceText,
+                    //         translationText: translation.translation,
+                    //         isValid: false,
+                    //         hasResponse: true,
+                    //         reason: `语种检测失败: ${languageValidation.reason}`
+                    //     });
+                    //     continue;
+                    // }
+                    
+                    // 通过所有检查
+                    validMappings.push({
+                        sourceIndex: i,
+                        translationIndex: i,
+                        sourceText: sourceText,
+                        translationText: translation.translation,
+                        isValid: true,
+                        hasResponse: true
+                    });
+                }
+            } else {
+                // 🔒 没有错位问题，使用原来的逐一映射逻辑
+                for (let i = 0; i < messagesWithId.length; i++) {
+                    try {
+                    const sourceMessage = messagesWithId[i];
+                    const sourceText = sourceMessage.source;
+                    
+                    // 检查是否有对应的API响应
+                    if (i >= parsedArray.length) {
+                        // 没有API响应的条目，标记为未处理（保持unfinished状态）
+                        validMappings.push({
+                            sourceIndex: i,
+                            translationIndex: i,
+                            sourceText: sourceText,
+                            translationText: '',
+                            isValid: false,
+                            hasResponse: false,
+                            reason: 'API未返回此条目的翻译（可能由于内容过长、敏感词过滤或API限制）'
+                        });
+                        continue;
+                    }
+                    
+                    const translation = parsedArray[i];
+                    
+                    // 🔒 验证翻译对象的完整性
+                    if (!translation || !translation.translation || typeof translation.translation !== 'string') {
+                        validMappings.push({
+                            sourceIndex: i,
+                            translationIndex: i,
+                            sourceText: sourceText,
+                            translationText: '',
+                            isValid: false,
+                            hasResponse: true,
+                            reason: '无效的翻译内容格式'
+                        });
+                        continue;
+                    }
+                    
+                    // 🔒 可选：验证翻译响应中是否包含索引信息（如果API支持）
+                    if (translation.index !== undefined && translation.index !== i) {
+                        console.warn(`[索引警告] 翻译 ${i}: API返回索引 ${translation.index} 与预期索引 ${i} 不匹配`);
+                    }
+                    
+                    // 🔒 验证源文本匹配（如果API返回了源文本）
+                    // 🔧 修复：使用全局文本标准化函数进行比较，忽略多余空格、换行符等差异
+                    if (translation.source && normalizeTextForComparison(translation.source) !== normalizeTextForComparison(sourceText)) {
+                        console.warn(`[源文本警告] 翻译 ${i + 1}: API返回源文本不匹配`);
+                        console.warn(`[源文本警告]   预期源文本: "${sourceText}"`);
+                        console.warn(`[源文本警告]   API返回源文本: "${translation.source}"`);
+                        console.warn(`[源文本警告]   标准化预期: "${normalizeTextForComparison(sourceText)}"`);
+                        console.warn(`[源文本警告]   标准化实际: "${normalizeTextForComparison(translation.source)}"`);
+                        validMappings.push({
+                            sourceIndex: i,
+                            translationIndex: i,
+                            sourceText: sourceText,
+                            translationText: translation.translation,
+                            isValid: false,
+                            hasResponse: true,
+                            reason: '源文本不匹配，可能存在索引错位'
+                        });
+                        continue;
+                    }
+                    
+                    // 检查翻译质量（基本格式和内容检查）
+                    const qualityCheck = isValidTranslation(sourceText, translation.translation, targetLanguage);
+                    if (!qualityCheck.valid) {
+                        validMappings.push({
+                            sourceIndex: i,
+                            translationIndex: i,
+                            sourceText: sourceText,
+                            translationText: translation.translation,
+                            isValid: false,
+                            hasResponse: true,
+                            reason: `质量检查失败: ${qualityCheck.reason}`
+                        });
                         continue;
                     }
 
-                    // 检查翻译质量
-                    const qualityCheck = isValidTranslation(sourceText, translation.translation, targetLanguage);
-                    if (!qualityCheck.valid) {
-                        // 保留质量问题的详细输出
-                        console.log(`[条目 ${i+1}/${messages.length}] ⚠️ 质量问题`);
-                        console.log(`- 原文: "${sourceText}"`);
-                        console.log(`- 译文: "${translation.translation}"`);
-                        console.log(`- 原因: ${qualityCheck.reason}`);
-                        qualityIssueCount++;
-                        skipCount++;
-                        continue;
-                    }
+                    // 实时语种检测（新增）
+                    // const languageValidation = preWriteTranslationValidation(
+                    //     sourceText, 
+                    //     translation.translation, 
+                    //     targetLanguage, 
+                    //     true // 启用验证
+                    // );
                     
-                    if (translationElement) {
-                        translationElement.textContent = translation.translation;
-                        if (!keepUnfinishedTypeAttr && translationElement.getAttribute('type') === 'unfinished') {
-                            translationElement.removeAttribute('type');
+                    // if (!languageValidation.isValid) {
+                    //     validMappings.push({
+                    //         sourceIndex: i,
+                    //         translationIndex: i,
+                    //         sourceText: sourceText,
+                    //         translationText: translation.translation,
+                    //         isValid: false,
+                    //         hasResponse: true,
+                    //         reason: `语种检测失败: ${languageValidation.reason}`
+                    //     });
+                    //     continue;
+                    // }
+                    
+                    // 🔒 所有检查通过，标记为有效映射
+                    validMappings.push({
+                        sourceIndex: i,
+                        translationIndex: i,
+                        sourceText: sourceText,
+                        translationText: translation.translation,
+                        isValid: true,
+                        hasResponse: true
+                    });
+                    
+                } catch (error) {
+                    validMappings.push({
+                        sourceIndex: i,
+                        translationIndex: i,
+                        sourceText: messagesWithId[i].source,
+                        translationText: '',
+                        isValid: false,
+                        hasResponse: i < parsedArray.length,
+                        reason: `处理异常: ${error.message}`
+                    });
+                    }
+                }
+            }
+            
+            // 🔒 第二步：安全应用有效的翻译，确保一对一映射
+            successCount = 0; // 重置计数器
+            skipCount = 0; // 重置计数器
+            
+            console.log(`[上下文验证] 映射验证完成，有效映射: ${validMappings.filter(m => m.isValid).length}/${validMappings.length}`);
+            
+            for (const mapping of validMappings) {
+                try {
+                    const sourceMessage = messagesWithId[mapping.sourceIndex];
+                    
+                    if (mapping.isValid) {
+                        // 🔒 最终安全检查：确保索引对应的消息是正确的
+                        if (sourceMessage.source !== mapping.sourceText) {
+                            console.error(`[严重错误] 索引 ${mapping.sourceIndex} 的源文本不匹配！`);
+                            console.error(`  预期: "${mapping.sourceText}"`);
+                            console.error(`  实际: "${sourceMessage.source}"`);
+                            skipCount++;
+                            continue;
                         }
-                        // 成功翻译只显示条目编号，不显示详情
-                        console.log(`[条目 ${i+1}/${messages.length}] ✓`);
-                        successCount++;
+                        
+                        // 应用翻译
+                        let translationElement = sourceMessage.translationElement;
+                        if (translationElement) {
+                            translationElement.textContent = mapping.translationText;
+                            if (!keepUnfinishedTypeAttr && translationElement.getAttribute('type') === 'unfinished') {
+                                translationElement.removeAttribute('type');
+                            }
+                            console.log(`[条目 ${mapping.sourceIndex + 1}/${messagesWithId.length}] ✓ "${mapping.sourceText.substring(0, 30)}${mapping.sourceText.length > 30 ? '...' : ''}" → "${mapping.translationText.substring(0, 50)}${mapping.translationText.length > 50 ? '...' : ''}"`);
+                            successCount++;
+                        }
+                    } else {
+                        console.log(`[条目 ${mapping.sourceIndex + 1}/${messagesWithId.length}] ❌ 跳过 - ${mapping.reason}`);
+                        skipCount++;
                     }
                 } catch (error) {
-                    // 保留错误信息的详细输出
-                    console.log(`[条目 ${i+1}/${messages.length}] ❌ 跳过`);
-                    console.log(`- 原文: "${messages[i].source}"`);
-                    console.log(`- 原因: 处理出错 (${error.message})`);
+                    console.log(`[条目 ${mapping.sourceIndex + 1}/${messagesWithId.length}] ❌ 应用错误 - ${error.message}`);
                     skipCount++;
                 }
             }
             
-            // 输出处理结果统计
-            console.log('[翻译完成] 处理结果统计:');
-            console.log(`- 成功翻译: ${successCount} 条`);
-            console.log(`- 跳过翻译: ${skipCount} 条`);
-            if (qualityIssueCount > 0) {
-                console.log(`- 质量问题: ${qualityIssueCount} 条`);
+            // 🔒 第三步：验证完整性和生成详细统计
+            const totalProcessed = successCount + skipCount;
+            const noResponseCount = validMappings.filter(m => !m.hasResponse).length;
+            const failedWithResponseCount = validMappings.filter(m => m.hasResponse && !m.isValid).length;
+            
+            if (totalProcessed !== messagesWithId.length) {
+                console.warn(`[完整性警告] 处理数量不匹配！输入: ${messagesWithId.length}, 处理: ${totalProcessed}`);
             }
-            console.log(`- 完成比例: ${((successCount / messages.length) * 100).toFixed(1)}%`);
+            
+            // 输出详细的处理结果统计
+            console.log('[翻译完成] 处理结果统计:');
+            console.log(`- 📊 输入总数: ${messagesWithId.length} 条`);
+            console.log(`- ✅ 成功翻译: ${successCount} 条`);
+            console.log(`- ❌ 跳过翻译: ${skipCount} 条`);
+            
+            if (noResponseCount > 0) {
+                console.log(`  └─ 🚫 API未返回: ${noResponseCount} 条 (保持unfinished状态)`);
+            }
+            
+            if (failedWithResponseCount > 0) {
+                console.log(`  └─ ⚠️  验证失败: ${failedWithResponseCount} 条 (质量/语种问题)`);
+            }
+            
+            if (qualityIssueCount > 0) {
+                console.log(`- ⚠️  质量问题: ${qualityIssueCount} 条`);
+            }
+            
+            const successRate = ((successCount / messagesWithId.length) * 100).toFixed(1);
+            const apiResponseRate = ((parsedArray.length / messagesWithId.length) * 100).toFixed(1);
+            
+            console.log(`- 📈 翻译成功率: ${successRate}% (${successCount}/${messagesWithId.length})`);
+            console.log(`- 🌐 API响应率: ${apiResponseRate}% (${parsedArray.length}/${messagesWithId.length})`);
+            
+            // 如果API响应率低于90%，给出建议
+            if (parsedArray.length < messagesWithId.length * 0.6) {
+                console.log('');
+                console.log('📋 响应率较低的可能原因和建议:');
+                console.log('   • 批次过大 → 尝试减小 BATCH_SIZE');
+                console.log('   • 文本过长 → 检查源文本长度');
+                console.log('   • 敏感内容 → 检查是否包含敏感词');
+                console.log('   • API限制 → 降低并发数或增加延迟');
+            }
             
             // 使用单行输出token使用情况
             if (response.data.usage) {
@@ -381,11 +855,13 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             const filteredLines = responseLines.filter(line => line.trim() !== '').slice(0, 10); // 错误时只显示前10行有内容的行
             const cleanedResponse = filteredLines.join('\n');
             console.error('原始响应:', cleanedResponse + (responseLines.length > filteredLines.length ? '\n...' : ''));
-            console.error(`[处理结果] 由于JSON解析失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+            console.error(`[处理结果] API响应JSON解析失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+            console.error('可能原因：API返回了非标准JSON格式或包含特殊字符');
             return;
         }
     }).catch(error => {
         console.error('[翻译错误] API请求失败:', error.message);
-        console.error(`[处理结果] 由于API请求失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+        console.error(`[处理结果] API网络请求失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+        console.error('可能原因：网络连接问题、API密钥错误、请求超时或API服务异常');
     });
 }

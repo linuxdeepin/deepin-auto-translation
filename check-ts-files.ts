@@ -77,7 +77,7 @@ function syncTranslationsFromTransifex(repository: string, repoPath: string) {
             // 使用transifex-cli拉取所有翻译
             console.log(`使用tx命令从Transifex拉取${repository}的翻译文件...`);
             // 临时屏蔽tx pull功能 TTTTTTTTTTTTTTT
-            Transifex.downloadTranslationFilesViaCli(repoPath);
+            //Transifex.downloadTranslationFilesViaCli(repoPath);
             //console.log(`[已屏蔽] 从Transifex同步${repository}的翻译文件功能已临时关闭`);
             
             // 递归检查并清理@Arab语种文件
@@ -394,6 +394,9 @@ export async function processAllTsFiles() {
             // 计算小语种文件数量(不需要处理的文件)
             const skipFilesCount = totalFilesFound - filesToTranslate.length;
             
+            // 计算非繁体文件数量（AI翻译文件）
+            const nonTraditionalFilesCount = filesToTranslate.length - traditionalFilesCount;
+            
             // 收集各类型的语种
             const aiTranslateLanguages = filesToTranslate
                 .filter(item => !(['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese))
@@ -402,19 +405,15 @@ export async function processAllTsFiles() {
                 .filter(item => ['zh_HK', 'zh_TW'].includes(item.langCode) || item.isTraditionalChinese)
                 .map(item => item.langCode);
             
-            console.log(`\n========== 统计信息 ==========`);
-            console.log(`共找到 ${totalFilesFound} 个需要处理的翻译文件，其中：`);
-            console.log(`  - ${filesToTranslate.length - traditionalFilesCount} 个需要AI翻译 (${aiTranslateLanguages.join(', ')})`);
-            if (traditionalFilesCount > 0) {
-                console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理 (${traditionalLanguages.join(', ')})`);
-            } else {
-                console.log(`  - ${traditionalFilesCount} 个需要繁体中文转换处理`);
-            }
-            if (skipFilesCount > 0) {
-                console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理 (${Array.from(encounteredMinorLanguages).join(', ')})`);
-            } else {
-                console.log(`  - ${skipFilesCount} 个是小语种文件，跳过不处理`);
-            }
+            console.log(`\n========== 语种统计 ==========`);
+            console.log(`总文件数: ${totalFilesFound} 个`);
+            console.log(`├─ 小语种文件: ${skipFilesCount} 个 (跳过不处理)`);
+            console.log(`│  └─ 语种: ${Array.from(encounteredMinorLanguages).join(', ') || '无'}`);
+            console.log(`├─ 繁体中文文件: ${traditionalFilesCount} 个 (需要转换处理)`);
+            console.log(`│  └─ 语种: ${traditionalLanguages.join(', ') || '无'}`);
+            console.log(`└─ 非繁体文件: ${nonTraditionalFilesCount} 个 (需要AI翻译)`);
+            console.log(`   └─ 语种: ${aiTranslateLanguages.join(', ') || '无'}`);
+            console.log(`=========================================`);
             
             // 输出所有待翻译的文件
             console.log(`\n========== 待翻译文件列表 ==========`);

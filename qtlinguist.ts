@@ -30,11 +30,19 @@ export function createTsFileFromTemplate(targetLanguageCode: string, templateFil
         
         // 检查文件是否成功创建
         if (fs.existsSync(targetFilePath)) {
-            // 确保创建的文件使用UTF-8编码
-            const content = fs.readFileSync(targetFilePath, 'utf8');
+            // 读取内容并修复language属性（lconvert有时不能正确设置）
+            let content = fs.readFileSync(targetFilePath, 'utf8');
+            
+            // 确保language属性正确设置为目标语言代码
+            content = content.replace(
+                /(<TS version="[^"]*" language=")[^"]*(")/,
+                `$1${targetLanguageCode}$2`
+            );
+            
+            // 写回文件，确保使用UTF-8编码
             fs.writeFileSync(targetFilePath, content, { encoding: 'utf8' });
             
-            console.log(`成功创建并确保UTF-8编码: ${targetFilePath}`);
+            console.log(`成功创建并确保UTF-8编码和正确language属性: ${targetFilePath}`);
             return targetFilePath;
         }
         return null;

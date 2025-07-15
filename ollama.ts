@@ -9,10 +9,18 @@ import * as Prompt from './prompt';
 
 export async function fetchTranslations(messages: MessageData[], targetLanguage: string, keepUnfinishedTypeAttr : boolean) : Promise<void>
 {
+    // 🔒 安全检查：为每条消息创建唯一标识，确保上下文独立
+    const messagesWithId = messages.map((message, index) => ({
+        ...message,
+        _originalIndex: index,
+        _contextId: `${message.context}_${message.source}_${index}` // 唯一标识符
+    }));
+    
     let userPrompt = YAML.dump({
         targetLanguageCode: targetLanguage,
-        messages: messages.map(message => {
+        messages: messagesWithId.map((message, index) => {
             return {
+                index: index, // 🔒 添加索引字段，确保顺序可追踪
                 context: message.context,
                 source: message.source,
                 comment: message.comment
@@ -158,7 +166,8 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             
             if (!Array.isArray(responsedTranslations)) {
                 console.error('[错误] 响应格式错误: 不是数组格式');
-                console.error(`[处理结果] 由于响应格式错误，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+                console.error(`[处理结果] API响应格式异常，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
+                console.error('可能原因：API返回了非JSON格式内容或格式不符合预期');
                 return;
             }
 
@@ -222,12 +231,33 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                 return { valid: true };
             }
 
+            // 检查数组长度是否匹配
+            if (responsedTranslations.length !== messages.length) {
+                console.log('[翻译警告] 翻译数量不匹配');
+                console.log(`- 预期数量: ${messages.length}`);
+                console.log(`- 实际数量: ${responsedTranslations.length}`);
+                console.log('- 继续处理可用的翻译，未返回的条目将保持unfinished状态');
+            }
+
             console.log('[翻译详情] 开始处理翻译条目:');
-            for (let i = 0; i < Math.min(messages.length, responsedTranslations.length); i++) {
+
+            // 🔒 为所有输入创建映射，包括没有响应的条目
+            console.log(`[上下文验证] 处理输入条目: ${messagesWithId.length} 条，API响应: ${responsedTranslations.length} 条`);
+            
+            for (let i = 0; i < messagesWithId.length; i++) {
                 try {
+                    const sourceMessage = messagesWithId[i];
+                    const sourceText = sourceMessage.source;
+                    
+                    // 检查是否有对应的API响应
+                    if (i >= responsedTranslations.length) {
+                        // 没有API响应的条目，标记为未处理（保持unfinished状态）
+                        console.log(`[条目 ${i + 1}/${messagesWithId.length}] ❌ 跳过 - API未返回此条目的翻译`);
+                        skipCount++;
+                        continue;
+                    }
+                    
                     const translation = responsedTranslations[i];
-                    let translationElement = messages[i].translationElement;
-                    const sourceText = messages[i].source;
                     
                     // 检查翻译是否有效
                     if (!translation || !translation.translation || typeof translation.translation !== 'string') {
@@ -253,12 +283,12 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
                         continue;
                     }
                     
-                    if (translationElement) {
-                        translationElement.textContent = translation.translation;
-                        if (!keepUnfinishedTypeAttr && translationElement.getAttribute('type') === 'unfinished') {
-                            translationElement.removeAttribute('type');
+                    if (sourceMessage.translationElement) {
+                        sourceMessage.translationElement.textContent = translation.translation;
+                        if (!keepUnfinishedTypeAttr && sourceMessage.translationElement.getAttribute('type') === 'unfinished') {
+                            sourceMessage.translationElement.removeAttribute('type');
                         }
-                        console.log(`[条目 ${i+1}/${messages.length}] ✓`);
+                        console.log(`[条目 ${i+1}/${messages.length}] ✓ "${sourceText.substring(0, 30)}${sourceText.length > 30 ? '...' : ''}" → "${translation.translation.substring(0, 50)}${translation.translation.length > 50 ? '...' : ''}"`);
                         successCount++;
                     }
                 } catch (error) {
@@ -285,15 +315,8 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         } catch (error) {
             console.error('[错误] JSON解析失败');
             console.error('原因:', error.message);
-            // 过滤掉大量空行，只保留有实际内容的行
-            const responseLines = response.data.message.content.split('\n');
-            const filteredLines = responseLines.filter(line => line.trim() !== '').slice(0, 10); // 错误时只显示前10行有内容的行
-            const cleanedResponse = filteredLines.join('\n');
-            console.error('原始响应:', cleanedResponse + (responseLines.length > filteredLines.length ? '\n...' : ''));
-            console.error(`[处理结果] 由于JSON解析失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
         }
     }).catch(error => {
         console.error('[翻译错误] API请求失败:', error.message);
-        console.error(`[处理结果] 由于API请求失败，跳过本批次翻译 (共 ${messages.length} 条待翻译内容)`);
     });
 }

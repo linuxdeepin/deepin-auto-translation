@@ -101,6 +101,22 @@ export function getResourcePath(res: TransifexResource, languageCode: string)
         const command = `${Settings.bin.lconvert} -i ${englishResourcePath} -o ${result} -target-language ${languageCode} -drop-translations`;
         const output = execSync(command);
         console.log(output.toString());
+        
+        // 修复language属性（lconvert有时不能正确设置）
+        if (fs.existsSync(result)) {
+            let content = fs.readFileSync(result, 'utf8');
+            
+            // 确保language属性正确设置为目标语言代码
+            content = content.replace(
+                /(<TS version="[^"]*" language=")[^"]*(")/,
+                `$1${languageCode}$2`
+            );
+            
+            // 写回文件，确保使用UTF-8编码
+            fs.writeFileSync(result, content, { encoding: 'utf8' });
+            
+            console.log(`已修复language属性为: ${languageCode}`);
+        }
     }
     return result;
 }

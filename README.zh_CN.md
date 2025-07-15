@@ -9,58 +9,37 @@
 特别注意：本项目提供了一组脚本和实用函数，用于为基于 Qt 的项目预先填充翻译。由于 LLM 返回的结果并不总是正确和可靠，所以仍然建议在监督的情况下使用此工具。
 ## 功能特性
 
-- 自动检测Git仓库中最新提交是否符合脚本的启动要求（支持检测提交标题包含"transfix"且包含源文件（xx_en.ts/xx_en_us.ts）的特定提交,如果不满足会根据当前ts文件针对特定文件做翻译处理)
-- 自动从Transifex平台同步翻译文件更新
+- 自动从Transifex平台同步翻译文件更新（开源流程）
 - 支持多种大模型翻译服务(DOUBAO, OPENAI等)
-- 特别处理繁体中文(zh_HK, zh_TW)翻译，采用规则库匹配方式
-- **🆕 智能语种文件管理**：自动检测并创建缺失的语种文件，确保所有需要的语种都有对应的TS文件
-- **🆕 并行翻译处理**：支持多文件和多批次并行翻译，可将翻译时间减少50%-80%
-- 提交翻译结果同步transfix平台
-
-## 开源项目翻译流程
-
-## 项目文件结构介绍
-
-了解具体的工作流程之前，先介绍下主要文件及其作用：
-
-### 核心文件
-
-- **`index.ts`** - 开源项目工作流程的主入口点，处理CI自动化和项目协调
-- **`closed-source.ts`** - 闭源项目的独立工作流程，提供命令行接口
-- **`check-ts-files.ts`** - 文件发现和分类引擎，扫描仓库中的翻译文件
-
-### 翻译引擎
-
-- **`translator.ts`** - 核心翻译协调器，处理批量处理和文件管理
-- **`openai.ts`** - OpenAI兼容API集成（主要翻译服务）
-- **`doubao.ts`** - 火山引擎豆包API集成（备选翻译服务）
-- **`ollama.ts`** - 本地Ollama模型集成（自托管选项）
-
-### 平台集成
-
-- **`transifex.ts`** - Transifex平台API客户端，处理资源管理和上传/下载
-- **`gitrepo.ts`** - Git仓库管理，处理克隆和本地仓库操作
-- **`qtlinguist.ts`** - Qt Linguist TS文件解析器和生成器，处理XML操作
-
-### 配置与实用工具
-
-- **`settings.ts`** - 模型配置
-- **`secrets.ts`** - API密钥和身份验证凭据（用户创建）
-- **`types.ts`** - TypeScript类型定义和接口
-- **`prompt.ts`** - 翻译提示模板和本地化规则
-
-### 数据文件
-
-- **`config.yml`** - Transifex组织配置
-- **`transifex-projects.yml`** - 项目列表配置文件（自动生成或手动编辑）
-
-### 外部依赖
-
-- **`deepin-translation-utils`** - 繁体中文转换的二进制工具（简体 ↔ 繁体）
+- 基于规则库匹配的方式处理繁体中文(zh_HK, zh_TW)翻译，其余语种除有要求的小语种外采用大模型翻译
+- **智能语种文件管理**：自动检测并创建缺失的语种文件，确保所有需要的语种都有对应的TS文件
+- **并行翻译处理**：支持多文件并行翻译，可通过配置优化翻译性能
+- **翻译安全验证**：支持回译验证、语种检测、混合语种检测等多种验证模式
+- **语言属性修复**：自动修复TS文件中不正确的language属性
+- **翻译内容提取**：支持提取翻译内容用于检查和分析
+- 提交翻译结果同步transfix平台（开源流程）
 
 ## 开源项目翻译流程
 
 ### 前提条件：项目Transifex配置
+
+### 安装Transfiex
+
+```bash
+# 安装Transifex CLI
+curl -o- https://raw.githubusercontent.com/transifex/cli/master/install.sh | bash
+sudo apt install transifex-client
+
+# 配置Transifex认证 (创建 ~/.transifexrc 文件)
+[https://www.transifex.com]
+rest_hostname = https://rest.api.transifex.com
+api_hostname = https://api.transifex.com
+hostname = https://www.transifex.com
+token = YOUR_TRANSIFEX_API_TOKEN
+
+# 验证安装
+tx --version
+```
 
 在使用自动翻译工具之前，项目必须已经配置好Transifex集成。项目需要包含以下配置文件：
 
@@ -182,27 +161,14 @@
 
 #### 工作流程概览
 
-```mermaid
-graph TD
-    A[触发条件：Transifex PR] --> B[配置读取阶段]
-    B --> C[项目发现与过滤]
-    C --> D[资源获取与仓库准备]
-    D --> E[翻译文件同步]
-    E --> F[智能分类处理]
-    F --> G[AI翻译引擎]
-    F --> H[简繁转换工具]
-    F --> I[小语种跳过]
-    G --> J[更新后的翻译文件上传Transifex]
-    H --> J
-    I --> J
-    J --> K[CI流程完成]
-```
+![image-20250710140313767](./README.zh_CN.assets/image-20250710140313767.png)
 
 #### CI执行的详细步骤
 
 > **注意**: CI配置基于[deepin-auto-translation/test](https://github.com/linuxdeepin/deepin-auto-translation/tree/develop/test)分支，其他项目如需运行CI，需要基于此分支修改相应的yaml配置文件。
 
 **步骤1：读取配置和项目列表**  
+
 - 读取`config.yml`获取Transifex组织信息
 - 检查是否存在`transifex-projects.yml`配置文件：
   - 如果存在且非空，直接使用其中的项目列表
@@ -258,6 +224,26 @@ source ~/.bashrc
 
 # 验证安装
 bun --version
+```
+
+#### **配置Transifex**
+
+开源项目也可以使用闭源项目的流程进行翻译后上传，对于做过平台同步的项目推荐先进行tx pull更新最新的翻译再进行
+
+```bash
+# 安装Transifex CLI
+curl -o- https://raw.githubusercontent.com/transifex/cli/master/install.sh | bash
+sudo apt install transifex-client
+
+# 配置Transifex认证 (创建 ~/.transifexrc 文件)
+[https://www.transifex.com]
+rest_hostname = https://rest.api.transifex.com
+api_hostname = https://api.transifex.com
+hostname = https://www.transifex.com
+token = YOUR_TRANSIFEX_API_TOKEN
+
+# 验证安装
+tx --version
 ```
 
 #### 本地AI翻译部署
@@ -377,16 +363,18 @@ https://wikidev.uniontech.com/%E9%A1%B9%E7%9B%AE%E5%88%A9%E7%94%A8Transifex%E5%9
 
 直接运行以下命令启动翻译流程:
 ```shell
-$ bun closed-source.ts /path/to/project [optional-file-list] [--exclude pattern]
+$ bun closed-source.ts /path/to/project [options]
 ```
 
 ### 命令参数
 
 - **项目路径** (必需): 包含翻译文件的项目目录路径
 - **文件列表** (可选): 指定要处理的特定翻译文件
-- **排除模式** (可选): 使用 `--exclude` 跳过匹配的文件或目录
+- **--exclude** (可选): 跳过指定的文件，可多次使用
+- **--languages** (可选): 指定要翻译的语种列表，用逗号分隔
 - **--extract-only** (可选): 只提取翻译内容，不执行翻译
 - **--ensure-languages** (可选): 只检测并创建缺失的语种文件，不执行翻译
+- **--auto-create** (可选): 自动创建缺失语种文件并执行翻译
 
 #### 使用示例
 
@@ -400,85 +388,131 @@ bun closed-source.ts /path/to/project app_en.ts xx_fr.ts xx_ru.ts
 # 翻译所有文件但排除指定的翻译文件
 bun closed-source.ts /path/to/project --exclude xx_zh_CN.ts --exclude xx_en.ts
 
+# 只翻译指定语种
+bun closed-source.ts /path/to/project --languages zh_CN,en,fr
+
 # 只提取翻译内容用于检查，不执行翻译
 bun closed-source.ts /path/to/project --extract-only
 
-# 🆕 只检测并创建缺失的语种文件（安全操作：只创建新文件，不会删除或修改已有文件）
+# 只检测并创建缺失的语种文件（安全操作）
 bun closed-source.ts /path/to/project --ensure-languages
+
+# 自动创建缺失语种文件并执行翻译
+bun closed-source.ts /path/to/project --auto-create
 ```
 
-### 🆕 智能语种文件管理功能
+### 智能语种文件管理
 
-**功能说明**：自动检测项目中是否包含所需的38种语言翻译文件，为缺失的语种自动创建标准格式的TS文件。
+自动检测项目中缺失的语种文件，为缺失的语种创建标准格式的TS文件。
 
-**支持的语种列表**：
-```
-ca, hu, pl, az, fi, nl, fr, cs, tr, pt, ms, ru, sl, sr, gl_ES, ko, hr, da, ro, krl, lt, id, sk, el, hi_IN, ne, fa, et, bg, sv, am_ET, vi, bn, th, uz, fil, ur, ar
-```
+**特性**：
+- 支持52种语言的自动创建
 
-**安全保证**：
-- ✅ **只创建缺失的文件**：不会删除或修改任何已存在的语种文件
-- ✅ **智能模板选择**：优先使用 `项目名_en.ts` 作为模板，如没有则使用 `项目名.ts`
-- ✅ **正确语种标识**：自动设置 `<TS version="2.1" language="xx">` 中的语种代码
-- ✅ **标准未翻译格式**：所有翻译条目都设置为 `<translation type="unfinished"></translation>`
+      'ca',
+      'hu',
+      'pl',
+      'es',
+      'uk',
+      'bo',
+      'sq',
+      'zh_HK',
+      'zh_TW',
+      'it',
+      'pt_BR',
+      'az',
+      'ug',
+      'fi',
+      'nl',
+      'zh_CN',
+      'de',
+      'de_DE',
+      'fr',
+      'cs',
+      'tr',
+      'en_US',
+      'pt',
+      'ms',
+      'ru',
+      'sl',
+      'sr',
+      'ar',
+      'gl_ES',
+      'ko',
+      'hr',
+      'da',
+      'ro',
+      'krl',
+      'lt',
+      'id',
+      'sk',
+      'el',
+      'hi_IN',
+      'ja',
+      'ne',
+      'fa',
+      'et',
+      'bg',
+      'sv',
+      'am_ET',
+      'vi',
+      'bn',
+      'th',
+      'uz',
+      'fil',
+      'ur',
 
-**使用场景**：
+- 只创建缺失文件，不修改已存在文件
+
+**使用方法**：
 ```bash
-# 为现有项目补充缺失的语种文件
-bun closed-source.ts /path/to/existing-project --ensure-languages
+# 只创建缺失的语种文件
+bun closed-source.ts /path/to/project --ensure-languages
+
+# 创建缺失文件并执行翻译
+bun closed-source.ts /path/to/project --auto-create
 ```
 
-### 🆕 并行翻译处理功能
+### 并行翻译处理
 
-**功能说明**：支持多文件和多批次并行翻译，通过同时处理多个文件和批次，可将翻译时间减少50%-80%。
-
-**并行处理优势**：
-- **文件级并行**：同时处理多个翻译文件（默认3个）
-- **批次级并行**：每个文件内部同时处理多个批次（默认2个）
-- **延迟优化**：批次延迟从2秒减少到1秒
-- **智能配置**：支持多种预设配置和自定义设置
+支持多文件并行翻译，通过合理配置可优化翻译性能。
 
 **配置方式**：通过环境变量 `TRANSLATION_PARALLEL_CONFIG` 选择预设配置：
 
 ```bash
-# 默认配置（推荐，适合大多数情况）
-export TRANSLATION_PARALLEL_CONFIG=default
+# 标准配置（默认）
+export TRANSLATION_PARALLEL_CONFIG=standard
 bun closed-source.ts /path/to/project
 
-# 高性能配置（适合高配置机器）
-export TRANSLATION_PARALLEL_CONFIG=high
+# 性能配置（高并发）
+export TRANSLATION_PARALLEL_CONFIG=performance
 bun closed-source.ts /path/to/project
 
-# 保守配置（适合API限制严格的情况）
+# 保守配置（避免API限制）
 export TRANSLATION_PARALLEL_CONFIG=conservative
-bun closed-source.ts /path/to/project
-
-# 禁用并行处理（回退到原始串行模式）
-export TRANSLATION_PARALLEL_CONFIG=serial
-bun closed-source.ts /path/to/project
-
-# 不设置环境变量时使用默认配置
 bun closed-source.ts /path/to/project
 ```
 
-**预设配置对比**：
+**配置对比**：
 
-| 配置类型 | 文件并发数 | 批次并发数 | 批次大小 | 批次延迟 | 适用场景 |
-|---------|-----------|-----------|---------|---------|----------|
-| 默认配置 | 3 | 2 | 30 | 1000ms | 大多数情况 |
-| 高性能配置 | 5 | 3 | 50 | 500ms | 高配置机器 + 宽松API限制 |
-| 保守配置 | 2 | 1 | 20 | 2000ms | API限制严格 |
-| 串行配置 | 1 | 1 | 30 | 2000ms | 禁用并行处理 |
+| 配置 | 文件并发 | 批次大小 | API限制 | 特点 |
+|------|----------|----------|---------|------|
+| standard | 3 | 15 | 3次/1秒 | 平衡速度和稳定性 |
+| performance | 5 | 15 | 5次/1秒 | 最大化翻译速度 |
+| conservative | 1 | 15 | 1次/2秒 | 串行处理但优化速度 |
 
-**性能提升示例**（60个文件，每个90条文本）：
-- 串行处理：约30-45分钟
-- 默认并行：约10-15分钟（提升60-70%）
-- 高性能并行：约6-10分钟（提升75-85%）
+### 翻译安全验证
 
-**注意事项**：
-- 如遇到API限流错误，请使用保守配置
-- 并行处理会增加CPU和内存使用
-- 详细使用说明请参考：`PARALLEL_TRANSLATION.md`
+通过环境变量 `VALIDATION_CONFIG` 配置，开启翻译安全验证后，会先基于Unicode字符检测如果检测失败会基于AI进行二次校验，语种检测失败则跳过当前翻译，通过则基于大模型对译文进行回译，并让大模型判断回译和原文是否意思相近：
+
+```bash
+# 默认配置（规则+AI语种检测）
+export VALIDATION_CONFIG=default
+bun closed-source.ts /path/to/project
+
+# 禁用验证
+export VALIDATION_CONFIG=disabled
+bun closed-source.ts /path/to/project
+```
 
 ### 工作流程详解
 
@@ -488,16 +522,39 @@ bun closed-source.ts /path/to/project
 
 ```mermaid
 graph TD
-    A[开始：闭源项目翻译] --> B[项目扫描阶段]
+    A[闭源项目翻译] --> B[项目扫描阶段]
     B --> C[文件发现与分类]
     C --> D[语言分类判断]
     D --> E[非繁体中文处理]
     D --> F[繁体中文处理]
-    E --> G[AI翻译引擎]
-    F --> H[简繁转换工具]
-    G --> I[翻译结果统计]
-    H --> I
-    I --> J[工作流程完成]
+    
+    E --> G[翻译配置检查]
+    G --> H{并行/串行模式?}
+    
+    H -->|并行模式| I[并行AI翻译]
+    H -->|串行模式| J[串行AI翻译]
+    
+    I --> K[翻译安全校验]
+    J --> K
+    
+    K --> M{规则语种检测}
+    M -->|不通过| O[AI语种检测]
+    M -->|通过| N[回译校验]
+    
+    O -->|不通过| P[跳过当前条目]
+    O -->|通过| N
+    
+    N -->|不通过| P
+    N -->|通过| Q[写入翻译文件]
+    
+    F --> L[简繁转换工具]
+    L --> Q
+    
+    P --> R[继续下一条目]
+    Q --> R
+    
+    R --> S[翻译结果统计]
+    S --> T[工作流程完成]
 ```
 
 #### 处理步骤
@@ -516,13 +573,19 @@ graph TD
   - **小语种跳过**：德语、日语、西班牙语等
 
 **第三步：翻译处理**
-- **非繁体中文文件**：使用AI大模型逐个翻译，批量处理（每批30个条目）
-- **简体中文文件**：记录文件路径，为繁体中文转换提供源文件
-- **繁体中文文件**：使用 `deepin-translation-utils` 工具进行简繁转换
+- **非繁体中文文件**：
+  1. 使用AI大模型翻译，支持批量处理和并行处理
+  2. 对翻译结果进行安全校验：
+     - 首先进行规则语种检测
+     - 如果规则检测失败，使用AI进行语种检测
+     - 通过语种检测后进行回译校验
+     - 只有同时通过语种检测和回译校验的翻译才会被写入文件
+- **繁体中文文件**：使用 `deepin-translation-utils` 工具进行简繁转换，无需安全校验
 
 **第四步：结果统计**
-- 实时显示处理进度：`[当前/总数] 正在处理: 文件名`
-- 生成详细统计报告，包括成功、失败、跳过的文件数量
+- 实时显示处理进度和统计信息
+- 记录跳过的翻译条目及原因
+- 自动生成翻译检查文件用于质量分析
 
 ### 与开源项目翻译流程的区别
 
@@ -553,5 +616,3 @@ graph TD
 - [Transifex-cli使用指南](https://wikidev.uniontech.com/Transifex-cli)
 - [Deepin-translation-utils使用说明](https://wikidev.uniontech.com/Deepin-translation-utils%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E) (项目配置文件自动生成工具)
 
-### 项目文档
-- [PARALLEL_TRANSLATION.md](PARALLEL_TRANSLATION.md) - 并行翻译功能详细说明文档
