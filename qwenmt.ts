@@ -4,7 +4,6 @@
 
 import * as YAML from 'js-yaml';
 import axios from 'axios';
-import * as Secrets from './secrets';
 import { MessageData } from './types';
 
 export async function fetchTranslations(messages: MessageData[], targetLanguage: string, keepUnfinishedTypeAttr : boolean) : Promise<void>
@@ -13,7 +12,6 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         targetLanguageCode: targetLanguage,
         messages: messages.map(message => {
             return {
-                context: message.context,
                 source: message.source,
                 comment: message.comment
             }
@@ -40,7 +38,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         translation_options: {
             "source_lang": "English",
             "target_lang": getLanguageName(targetLanguage),
-            "domains": "The sentence is from Qt Linguist file for Qt application UI translation."
+            "domains": "The content is a set of sentences extracted from Qt Linguist file in YAML format for Qt application UI translation."
         },
     }, {
         headers: {

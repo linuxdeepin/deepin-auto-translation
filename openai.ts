@@ -5,7 +5,6 @@
 import * as YAML from 'js-yaml';
 import axios from 'axios';
 import * as Settings from './settings'
-import * as Secrets from './secrets';
 import { MessageData } from './types';
 import * as Prompt from './prompt';
 
@@ -39,7 +38,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         response_format: Prompt.structedOutputSchema,
     }, {
         headers: {
-            Authorization: `Bearer ${Secrets.openai.accessKey}`
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
         }
     }).then(response => {
         // response as json array

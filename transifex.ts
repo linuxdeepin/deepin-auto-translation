@@ -6,7 +6,6 @@ import fs from 'node:fs';
 import axios from 'axios';
 import * as YAML from 'js-yaml';
 import { parse } from 'ini';
-import * as Secrets from './secrets';
 import { TransifexIniResource, TransifexRepo, TransifexResource, TransifexYaml } from './types';
 import { execSync } from 'node:child_process';
 
@@ -14,7 +13,7 @@ async function getTransifexAllPages(url: string) {
     try {
         const response = await axios.get(url, {
             headers: {
-                Authorization: `Bearer ${Secrets.transifex.accessKey}`
+                Authorization: `Bearer ${process.env.TX_TOKEN}`
             }
         });
         const content = response.data.data;
@@ -101,7 +100,7 @@ export async function uploadTranslatedFileToTransifex(language: string, filepath
     fetch('https://rest.api.transifex.com/resource_translations_async_uploads', {
         method: 'POST',
         headers: {
-            Authorization: `Bearer ${Secrets.transifex.accessKey}`
+            Authorization: `Bearer ${process.env.TX_TOKEN}`
         },
         body: formData
     })

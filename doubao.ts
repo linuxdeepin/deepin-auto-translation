@@ -4,7 +4,6 @@
 
 import * as YAML from 'js-yaml';
 import axios from 'axios';
-import * as Secrets from './secrets';
 import { MessageData } from './types';
 import * as Prompt from './prompt';
 
