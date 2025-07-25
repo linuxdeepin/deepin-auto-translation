@@ -2,11 +2,6 @@
 //
 // SPDX-License-Identifier: CC0-1.0
 
-export const doubao = {
-    model: 'ep-xxxxxxxxxxxxxxx',
-    accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxx'
-};
-
 export const openai = {
     accessKey: 'xxxxxxxxxxxxxxxxxxxxxxxxx'
 };
@@ -15,4 +10,4 @@ export const transifex = {
     accessKey: 'x/xxxxxxxxxxxxxxxxxxxxxxxxxx'
 }
 
-export default {doubao, openai, transifex};
+export default {openai, transifex};

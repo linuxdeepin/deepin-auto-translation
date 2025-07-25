@@ -6,7 +6,6 @@ import * as YAML from 'js-yaml';
 import axios from 'axios';
 import * as Secrets from './secrets';
 import { MessageData } from './types';
-import * as Prompt from './prompt';
 
 export async function fetchTranslations(messages: MessageData[], targetLanguage: string, keepUnfinishedTypeAttr : boolean) : Promise<void>
 {
@@ -21,38 +20,44 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
         })
     });
 
+    // Seems QwenMT only support language name in English
+    function getLanguageName(languageCode: string): string {
+        const replacedLanguageCode = languageCode.replace('_', '-');
+        const displayNames = new Intl.DisplayNames(['en'], { type: 'language' });
+        const languageName = displayNames.of(replacedLanguageCode);
+        return languageName || replacedLanguageCode; // If not supported, return the original code
+    }
+
     // axios request
-    return axios.post('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
-        model: process.env.ARK_MODEL,
+    return axios.post('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+        model: 'qwen-mt-turbo',
         messages: [
-            {
-                role: "system",
-                content: Prompt.systemPrompt
-            },
             {
                 role: "user",
                 "content": userPrompt
             }
         ],
-        // undocumented but seems supported
-        extra_body: {
-            guided_json: Prompt.structedOutputJsonSchema
+        translation_options: {
+            "source_lang": "English",
+            "target_lang": getLanguageName(targetLanguage),
+            "domains": "The sentence is from Qt Linguist file for Qt application UI translation."
         },
     }, {
         headers: {
-            Authorization: `Bearer ${process.env.ARK_API_KEY}`
+            Authorization: `Bearer ${process.env.DASHSCOPE_API_KEY}`
         }
     }).then(response => {
-        // response as json array
+        // response as yaml format
         console.log(response.data.choices[0].message.content);
-        const responsedTranslations = JSON.parse(response.data.choices[0].message.content);
+        const responseData = YAML.load(response.data.choices[0].message.content) as any;
+        const responsedTranslations = responseData.messages;
         if (Array.isArray(responsedTranslations) && responsedTranslations.length === messages.length) {
             console.log(`Translated ${messages.length} strings`);
             for (let i = 0; i < messages.length; i++) {
                 const translation = responsedTranslations[i];
                 let translationElement = messages[i].translationElement;
                 if (translationElement) {
-                    translationElement.textContent = translation.translation;
+                    translationElement.textContent = translation.source;
                     // also check if we need to remove the type=unfinished attribute
                     if (!keepUnfinishedTypeAttr && translationElement.getAttribute('type') === 'unfinished') {
                         translationElement.removeAttribute('type');
@@ -61,7 +66,7 @@ export async function fetchTranslations(messages: MessageData[], targetLanguage:
             }
         } else {
             console.log(Array.isArray(responsedTranslations), responsedTranslations.length, messages.length);
-            console.error(`Unexpected response from Doubao: ${responsedTranslations}`);
+            console.error(`Unexpected response from QwenMT: ${responsedTranslations}`);
         }
         // also log token usage
         console.log(response.data.usage)

@@ -9,6 +9,7 @@ node_modules/
 # Project-related files
 ## Secrets
 secrets.ts
+.env.*
 ## Repos
 repo/
 ## Qt Linguist translation files (something_ar.ts, something_zh_CN.ts)
